@@ -28,8 +28,8 @@ CI for LLM behavior: evaluate prompt/model changes against a versioned, human-la
 
 ## Status
 - Decisions approved: modular monolith; file baselines in CI + DB for history; significance-aware gating; dashboard deferred until CLI/engine/CI are solid; private repo; OpenRouter/Groq as providers.
-- Done: Phase 0 docs (plan, ADRs, CLAUDE.md, .gitignore); `git init`; uv installed.
-- Pending: install `gh` CLI (optional until Phase 9); get an OpenRouter/Groq key (put in local `.env`); Phase 1 foundation.
-- Not started: everything under `backend/src/regguard` (scaffold files are empty).
-- Next action: user approves Phase 1 plan (pyproject, core types, Typer skeleton, CI).
-- Known issues: none yet.
+- Done: Phase 0 docs; Phase 1 foundation (pyproject, core config/errors/logging/types, CLI `--version`, 18 unit tests, import-linter contract, CI workflow, pre-commit, .env.example). Verified locally: ruff, ruff format, mypy strict, pytest, lint-imports all pass.
+- Pending: first CI run on GitHub (not yet verified); install `gh` CLI (needed by Phase 9); `pre-commit install` (optional).
+- Not started: Phase 2 (providers, prompts). Scaffold files for later phases are still empty.
+- Next action: Phase 2 plan (OpenAI-compatible provider, prompt loader, mock provider).
+- Known issues: on this Windows machine `uv run mypy` is blocked by an Application Control policy; use `uv run python -m mypy`. ci.yml runs on Linux and is unaffected.
