@@ -35,5 +35,11 @@ out/
 .DS_Store
 Thumbs.db
 
+# LaTeX build files (the .tex source and final .pdf are kept)
+docs/report/*.aux
+docs/report/*.log
+docs/report/*.out
+docs/report/*.toc
+
 # Claude Code local overrides
 .claude/settings.local.json

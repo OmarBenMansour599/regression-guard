@@ -1,0 +1,633 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------------------
+% Packages (all standard in MiKTeX / TeX Live)
+% ---------------------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage[hyphens]{url}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\renewcommand{\arraystretch}{1.25}
+\setlist{itemsep=2pt,topsep=4pt}
+
+% \code{...}: monospace text that can contain _ and breaks at / and -
+\newcommand{\code}[1]{\nolinkurl{#1}}
+% Highlighted "key idea" box
+\newcommand{\keyidea}[1]{%
+  \par\smallskip\noindent\fcolorbox{NavyBlue}{NavyBlue!6}{%
+  \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{#1}}\par\smallskip}
+\newcommand{\empt}{\textit{(empty, later phase)}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{RegressionGuard: Progress Report}
+\fancyhead[R]{Phases 0 to 4}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+% ---------------------------------------------------------------------------
+\begin{titlepage}
+  \centering
+  \vspace*{3cm}
+  {\Huge\bfseries RegressionGuard\par}
+  \vspace{0.6cm}
+  {\Large Model Regression Detection System for LLM Applications\par}
+  \vspace{1.2cm}
+  {\Large Progress Report: Phases 0 to 4\par}
+  \vspace{2cm}
+  {\large Omar Ben Mansour\par}
+  \vspace{0.4cm}
+  {\large 9 to 12 November 2026\par}
+  \vfill
+  \keyidea{\textbf{Status.} Planning, foundation, AI integration, golden dataset and
+  evaluation engine are complete and verified on a real AI model.
+  Next step: Phase 5, comparison and regression detection.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ===========================================================================
+\section{The project in one page}
+
+\subsection{The problem}
+
+Many applications now use a \textbf{Large Language Model} (LLM), such as the models behind
+ChatGPT or Gemini, to do a task: answer customers, sort emails, extract information.
+
+The behaviour of such an application is controlled by a \textbf{prompt} (the written
+instructions given to the model) and by the \textbf{choice of model}. Teams change these all
+the time to improve results or reduce costs. The danger is that a small change can silently
+make the application \textbf{worse}:
+\begin{itemize}
+  \item a reworded prompt starts putting emails in the wrong category;
+  \item a new model returns its answer in a slightly different format, which breaks the
+        program reading it;
+  \item answers become slower or use more tokens, which costs more money.
+\end{itemize}
+
+In normal software, \textbf{automated tests} catch this kind of problem before it reaches
+users. For LLM applications, most teams have no equivalent: they change the prompt and hope.
+
+\subsection{The solution}
+
+RegressionGuard is an \textbf{automated testing system for LLM behaviour}.
+
+\keyidea{Every time someone changes a prompt or a model, RegressionGuard runs the
+application on a fixed set of carefully checked examples (the \emph{golden dataset}),
+measures the quality of the answers, compares them with a trusted earlier version (the
+\emph{baseline}), and raises an alarm if quality dropped. It can then block the change from
+being deployed.}
+
+\textbf{Analogy.} A school exam with an answer key. The golden dataset is the exam, with the
+correct answers written by a human. Each new version of the prompt ``sits the exam''. If its
+score drops compared to the previous version, we know the change made things worse, and we
+know exactly which questions it now gets wrong.
+
+\subsection{The first application we test}
+
+To build and demonstrate the system we use a realistic example: a \textbf{customer-support
+email classifier}. It reads a customer email and returns:
+\begin{itemize}
+  \item a \textbf{category}: \code{billing}, \code{technical}, \code{account} or \code{general};
+  \item a \textbf{one-sentence summary} of the email.
+\end{itemize}
+The system is designed so that other LLM applications can be added later without changing
+the core engine.
+
+\subsection{Where we are}
+
+The parts that \textbf{run} the evaluation are finished and tested with a real AI model:
+\begin{itemize}
+  \item the system calls an AI model reliably, even on a free plan that often refuses requests;
+  \item prompts and datasets are versioned like code;
+  \item a human-labelled golden dataset exists (24 cases so far, target 60);
+  \item a full evaluation run works end to end, saves its results, and was verified on the
+        real API (12 out of 12 correct on a 12-case sample).
+\end{itemize}
+The parts that \textbf{compare} runs and \textbf{raise alarms}, the heart of regression
+detection, are the next phase.
+
+% ===========================================================================
+\section{Key words explained}
+
+\begin{longtable}{@{}p{0.27\linewidth}p{0.68\linewidth}@{}}
+\toprule
+\textbf{Term} & \textbf{Simple meaning} \\
+\midrule
+\endhead
+LLM (Large Language Model) & An AI model that reads and writes text, such as Gemini or GPT. \\
+Prompt & The written instructions sent to the LLM telling it what to do and how to answer. \\
+Provider / API & The online service we send requests to and get answers from (here: OpenRouter). \\
+Token & A small piece of text (roughly 3 to 4 characters). Providers count and bill usage in tokens. \\
+Latency & How long one answer takes to arrive, in milliseconds. \\
+Golden dataset & A fixed list of example inputs with the correct answers, written and checked by a human: the ``answer key''. \\
+Test case & One example of the golden dataset: one email plus its correct category and summary. \\
+Evaluation run & Running every test case through the AI and scoring each answer. \\
+Regression & A change that makes results worse than before. \\
+Baseline & A trusted earlier run that new runs are compared against. \\
+Schema validation & Checking that an answer has the exact expected shape (JSON with a \code{category} among 4 allowed values and a \code{summary}). \\
+JSON & A standard text format for structured data, for example \texttt{\{"category": "billing"\}}. \\
+Hash (fingerprint) & A short code computed from a file's content. If one character changes, the fingerprint changes. Used to detect any modification. \\
+Cache & A local memory of previous answers. The exact same question is answered instantly, without paying for a new API call. \\
+Rate limit / HTTP 429 & The provider refusing requests because too many arrive too quickly. \\
+HTTP 5xx (e.g.\ 504) & A temporary failure on the provider's side (server overloaded or timed out). \\
+Retry with backoff & Trying a failed request again after waiting, and waiting longer after each failure. \\
+CLI & Command-Line Interface: a program used by typing commands, e.g.\ \texttt{regguard run -p v1}. \\
+CI & Continuous Integration: automatic checks that GitHub runs on every code change (GitHub Actions). \\
+Commit / push & Saving a snapshot of the code in git (commit), then uploading it to GitHub (push). \\
+Unit test & A small automatic program checking that one piece of code behaves correctly. \\
+Mock provider & A fake AI used in tests: instant, predictable, offline and free. \\
+ADR & Architecture Decision Record: a short document recording an important decision and why. \\
+PII & Personally Identifiable Information (real emails, phone numbers, card numbers). Must not appear in test data. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{How the system works (big picture)}
+
+\subsection{The flow of one evaluation run}
+
+When a developer types \texttt{regguard run -p v1}, the following happens:
+\begin{enumerate}
+  \item \textbf{Load the configuration} (\code{regguard.yaml}): which application is tested,
+        where its prompts and dataset are.
+  \item \textbf{Load the prompt version} (\code{v1.yaml}): instructions, examples, model name
+        and settings. Compute its fingerprint.
+  \item \textbf{Load and check the golden dataset} (\code{cases.yaml}): every case must be
+        valid. Compute its fingerprint.
+  \item \textbf{Select the cases} to run: all, or a balanced subset (e.g.\ 12 cases, 3 per category).
+  \item \textbf{Estimate the cost}: count the real API calls needed (cached answers are free)
+        and refuse if this exceeds the allowed budget.
+  \item \textbf{Call the AI for each case}, carefully: at most 3 at a time and 15 per minute,
+        retrying failures with increasing waits, and stopping early if the provider is clearly down.
+  \item \textbf{Check each answer}: valid JSON with the right shape? Correct category?
+  \item \textbf{Compute the totals}: pass rate, accuracy per category, speed, tokens, error rate.
+  \item \textbf{Decide the run status}: \code{COMPLETED}, or \code{ERROR} if too many calls
+        failed for technical reasons (never confused with ``the prompt got worse'').
+  \item \textbf{Save everything} to a result file, including exactly which prompt, dataset,
+        model and code version produced it.
+\end{enumerate}
+Phase 5 adds step 11: \textbf{compare with the baseline and decide PASS / WARN / FAIL.}
+
+\subsection{How the code is organised}
+
+The code is one Python program (a ``modular monolith'') split into layers. Each layer may
+only use the layers below it. This rule is checked automatically on every change.
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Layer} & \textbf{Role} \\
+\midrule
+\code{cli} & what the user types (commands) \\
+\code{services} & the ``use cases'' tying everything together \\
+\code{evaluation} & running cases: executor, cache, runner \\
+\code{metrics} & scoring answers \\
+\code{apps} & the application under test (email classifier) \\
+\code{prompts}, \code{datasets}, \code{storage} & prompt files, golden data, saved results \\
+\code{providers} & talking to the AI service \\
+\code{core} & shared building blocks (types, settings, errors, logging) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Why layers matter:} lower layers never depend on upper ones, so each part can be
+tested alone, and replacing one part (for example adding a web interface) does not require
+rewriting the others.
+
+% ===========================================================================
+\section{Technology choices and why}
+
+\begin{longtable}{@{}p{0.22\linewidth}p{0.25\linewidth}p{0.47\linewidth}@{}}
+\toprule
+\textbf{Need} & \textbf{Choice} & \textbf{Why this one} \\
+\midrule
+\endhead
+Language & Python (3.14 locally, 3.12+ supported) & The standard language for AI tooling. \\
+Environment manager & uv & Fast, reproducible installs with a lock file. \\
+Data validation & Pydantic & Checks that every piece of data has the right shape, with clear errors. \\
+Command line & Typer & Clean, typed commands with automatic help. \\
+HTTP calls to the AI & httpx & Full control of timeouts and errors; official SDKs hide their own retries, which would interfere with ours. \\
+AI provider & OpenRouter (OpenAI-compatible) & One account, many models, including free ones. Groq works without code changes. \\
+Classifier model & Google Gemma 4 26B & Free, fast, supports JSON output mode. \\
+Judge model (Phase 5) & NVIDIA Nemotron 3.5 Super & Larger and from a different family, reducing the bias of a model grading itself. \\
+Configuration & YAML & Easy to read and write by hand, including multi-line emails. \\
+Logging & structlog & Logs readable by humans and by machines. \\
+Tests & pytest & The standard Python test framework. \\
+Code quality & ruff, mypy (strict), import-linter & Catch style errors, type errors and layer violations automatically. \\
+Continuous integration & GitHub Actions & Runs all checks on every push, on Python 3.12 and 3.14. \\
+\bottomrule
+\end{longtable}
+
+Deliberately \textbf{not} used, to avoid unnecessary complexity: microservices, Redis, Celery,
+Kubernetes, LiteLLM, DeepEval, RAGAS. They are not needed at this scale (reasons in the
+technical plan).
+
+% ===========================================================================
+\section{What was built, phase by phase}
+
+The roadmap has 12 phases (0 to 11). Phases 0 to 4 are done.
+
+\subsection{Phase 0: Planning and environment}
+\textbf{Goal:} understand the problem, challenge the initial idea, design before coding.
+\begin{itemize}
+  \item Complete technical plan (\code{docs/technical-plan.md}): requirements, architecture,
+        database design, folders, roadmap, risks.
+  \item Initial assumptions questioned and improved (section~\ref{sec:decisions}). Most
+        important: fixed thresholds such as ``warn at 3\%, fail at 8\%'' cause false alarms on
+        small datasets, because one case out of 80 is already 1.25\%.
+  \item Main decisions recorded as ADRs.
+  \item Repository set up: git, private GitHub repository, \code{.gitignore}, AI assistant
+        permissions, and a \code{CLAUDE.md} file holding the rules and current status.
+\end{itemize}
+\textbf{Result:} an agreed plan and a clean repository.
+
+\subsection{Phase 1: Project foundation}
+\textbf{Goal:} a project that installs, runs and is automatically checked.
+\begin{itemize}
+  \item Project configuration (\code{pyproject.toml}) and locked dependencies.
+  \item Shared building blocks in \code{core/}: settings from environment variables (secrets
+        never in files), error types, logging, and the data types describing runs and results.
+  \item A first command: \texttt{regguard -{}-version}.
+  \item 18 unit tests and the GitHub Actions workflow.
+\end{itemize}
+\textbf{Result:} all checks green locally and on GitHub.
+
+\subsection{Phase 2: Talking to the AI and managing prompts}
+\textbf{Goal:} send a versioned prompt to a real model and get a validated answer.
+\begin{itemize}
+  \item A \textbf{provider} talking to any OpenAI-compatible service. It makes exactly one
+        attempt per call and reports whether a failure is worth retrying.
+  \item A \textbf{mock provider} (fake AI) so tests run offline, instantly, for free.
+  \item \textbf{Versioned prompts}: each version is one YAML file (\code{v1.yaml},
+        \code{v2.yaml}) with instructions, examples, model and settings. A fingerprint detects
+        any change affecting behaviour and ignores cosmetic edits.
+  \item \textbf{The email classifier definition}: the exact answer shape, and robust reading of
+        the AI's answer (plain JSON, JSON in code fences, or JSON inside text).
+  \item Commands \texttt{prompt list}, \texttt{prompt show}, \code{try}.
+  \item Two prompts: \code{v1} (detailed) and \code{v2} (deliberately minimal, expected to
+        perform worse, used later to demonstrate regression detection).
+\end{itemize}
+\textbf{Result:} 81 tests passing; a real AI call returned a valid, correct answer.
+
+\subsection{Phase 3: The golden dataset}
+\textbf{Goal:} a reliable, human-checked answer key and tools to keep it correct.
+\begin{itemize}
+  \item \textbf{Test case format}: id, email, correct category, reference summary, difficulty,
+        tags (e.g.\ \code{typo}, \code{ambiguous}, \code{mixed_language}), a \code{critical}
+        flag for must-never-fail cases, and notes.
+  \item A \textbf{loader} that checks every case and reports \emph{all} problems at once.
+  \item A \textbf{dataset fingerprint}: changing a label changes it, editing a note does not.
+  \item \textbf{Safety and quality checks}: real-looking personal data, too few cases,
+        unbalanced categories, duplicates, multi-sentence summaries, unexplained hard cases.
+  \item \textbf{Balanced selection} of subsets, filters by id or tag.
+  \item Commands \texttt{dataset list}, \texttt{dataset validate}, \texttt{dataset stats}.
+  \item A \textbf{labelling guide} (\code{docs/labeling-guide.md}).
+  \item \textbf{The dataset itself}, written by hand, not by an AI: 24 cases so far.
+\end{itemize}
+\textbf{Result:} 114 tests passing; the dataset validates.
+
+\subsection{Phase 4: The evaluation engine}
+\textbf{Goal:} run the dataset through the AI reliably and save complete, reproducible results.
+\begin{itemize}
+  \item \textbf{Executor}: at most 3 simultaneous calls and 15 per minute (the free plan
+        allows 20); retries with growing waits; respects the provider's ``retry after''
+        instruction; longer waits for rate limits (2.5\,s up to 40\,s); early stop on a
+        rejected API key or after 5 consecutive failures.
+  \item \textbf{Response cache} with three modes: \code{read-write}, \code{refresh}, \code{off}.
+  \item \textbf{Budget guard}: shows the number of real calls needed and refuses runs above
+        the limit (default 50, the free daily quota).
+  \item \textbf{Metrics}: \code{schema_valid} and \code{label_exact}, plus totals (pass rate,
+        per-category accuracy, median and 95th-percentile speed on fresh calls, tokens).
+  \item \textbf{Technical failures separated from quality}: failed cases are excluded from
+        accuracy; above 10\% technical failures the run is \code{ERROR}.
+  \item \textbf{Full traceability}: prompt and dataset fingerprints, model requested, override
+        flag, model actually served, git version (marked \code{-dirty} if uncommitted
+        changes), calls, cache hits and retries.
+  \item Results saved in \code{runs/<run-id>/result.json}; commands \code{run},
+        \texttt{runs list}, \texttt{runs show}.
+\end{itemize}
+\textbf{Result:} 151 tests passing (95\% of the code exercised) and the real-API acceptance
+test passed (section~\ref{sec:results}).
+
+% ===========================================================================
+\section{Every file explained}
+
+Files marked \empt{} exist in the folder structure but have no content yet.
+
+\subsection{Root of the repository}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{CLAUDE.md} & The project's rulebook and logbook: working rules, architecture rules, commands, environment notes, current status. Read automatically by the AI assistant. \\
+\code{README.md} & \empt{} Onboarding guide for a new team member (Phase 11). \\
+\code{.env.example} & Template of settings (API key, provider address, limits). Real values go in a private \code{.env} file that is never uploaded. \\
+\code{.gitignore} & Files git must never save: secrets, temporary files, local results, cache. \\
+\code{.gitattributes} & Consistent line endings between Windows and Linux. \\
+\code{.pre-commit-config.yaml} & Optional checks before each commit, including a secret scanner (gitleaks). \\
+\code{docker-compose.yml} & \empt{} Will start the system in containers (Phase 10). \\
+\code{.claude/settings.json} & Permissions for the AI coding assistant: allowed commands, and files it must never touch (\code{.env}). \\
+\code{.github/workflows/ci.yml} & GitHub Actions: on every push, install and run all checks on Python 3.12 and 3.14. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Documentation (\texorpdfstring{\texttt{docs/}}{docs/})}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{technical-plan.md} & Full engineering plan: analysis, architecture, stack, database design, roadmap, risks. \\
+\code{labeling-guide.md} & How to write golden test cases: categories, tie-break rules, summary rules, difficulty, quotas, process. \\
+\code{adr/0001-modular-monolith.md} & Decision: one well-organised program instead of many services. \\
+\code{adr/0002-file-baselines-in-ci.md} & Decision: baselines are files in the repository; history goes in a database later. \\
+\code{adr/0003-significance-aware-gating.md} & Decision: fail only when a drop is large \emph{and} unlikely to be random noise. \\
+\code{adr/0004-python-version-and-smart-app-control.md} & Decision: signed Python 3.14 locally because Windows security blocked the unsigned one. \\
+\code{architecture.md} & \empt{} Living architecture description. \\
+\code{report/progress-report.*} & This report (Markdown, LaTeX, PDF). \\
+\bottomrule
+\end{longtable}
+
+\subsection{Example application (\texorpdfstring{\texttt{examples/support-email-classifier/}}{examples/support-email-classifier/})}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{regguard.yaml} & Configuration of the tested application: name, code describing it, prompt and dataset folders, judge model. \\
+\code{prompts/classify/v1.yaml} & Prompt version 1: detailed instructions, category definitions, protection against instructions hidden in emails, 2 examples, model and settings. \\
+\code{prompts/classify/v2.yaml} & Prompt version 2: deliberately minimal, to demonstrate regression detection later. \\
+\code{datasets/emails/v1/dataset.yaml} & Description of dataset version 1 (name, version, date, change log). \\
+\code{datasets/emails/v1/cases.yaml} & The golden test cases written by hand (24 so far). \\
+\bottomrule
+\end{longtable}
+
+\subsection{Backend configuration and scripts (\texorpdfstring{\texttt{backend/}}{backend/})}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{pyproject.toml} & Project definition: dependencies, the \code{regguard} command, settings of all quality tools, layer rules. \\
+\code{uv.lock} & Exact versions of every dependency, so every install is identical. \\
+\code{.python-version} & Python version used locally (3.14). \\
+\code{scripts/check.py} & Runs every quality check in one command, exactly like GitHub. \\
+\code{alembic.ini} & \empt{} Database migrations (Phase 6). \\
+\code{CLAUDE.md} & \empt{} Backend-specific assistant rules. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Application code (\texorpdfstring{\texttt{backend/src/regguard/}}{backend/src/regguard/})}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\multicolumn{2}{@{}l}{\textbf{Entry points}} \\
+\code{__init__.py} & Version number (0.1.0). \\
+\code{__main__.py} & Allows \texttt{python -m regguard}. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{core/}: shared building blocks}} \\
+\code{config.py} & Reads settings from environment variables and \code{.env}. The API key is hidden in logs. \\
+\code{errors.py} & Error types; provider errors say whether retrying can help. \\
+\code{logging.py} & Readable or machine-readable logs. \\
+\code{types.py} & Shared data shapes: an AI answer, token usage, a score, a case result, run information, a full run result. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{providers/}: talking to the AI}} \\
+\code{base.py} & The contract every provider follows, and the request format. \\
+\code{openai_compatible.py} & The real provider: HTTPS call, timing, tokens, clear errors (rate limit, timeout, server error, bad key). \\
+\code{mock_provider.py} & Fake AI for tests and demos. \\
+\code{factory.py} & Picks the real or fake provider; clear message if the API key is missing. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{prompts/}: versioned prompts}} \\
+\code{models.py} & Shape of a prompt file, validation, fingerprint. \\
+\code{loader.py} & Reads prompt files, checks file name = version, lists versions. \\
+\code{render.py} & Builds the messages sent to the AI, filling in the email. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{apps/}: the application under test}} \\
+\code{base.py} & What describes an application, and robust reading of the AI's JSON answer. \\
+\code{support_email.py} & The email classifier: 4 categories, summary rules, example answer for the mock. \\
+\code{registry.py} & List of known applications. \\
+\code{config.py} & Reads \code{regguard.yaml}. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{datasets/}: the golden dataset}} \\
+\code{models.py} & Shape of a test case and a dataset; dataset fingerprint. \\
+\code{loader.py} & Reads and checks a dataset version, reporting all problems at once. \\
+\code{lint.py} & Privacy and quality warnings, and statistics. \\
+\code{select.py} & Balanced, repeatable subsets; filters by id or tag. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{metrics/}: scoring answers}} \\
+\code{base.py} & The contract every metric follows (new metrics plug in without engine changes). \\
+\code{deterministic.py} & \code{schema_valid} and \code{label_exact}: no AI involved, fully reproducible. \\
+\code{registry.py} & Which metrics apply to an application. \\
+\code{aggregate.py} & Run totals: pass rate, per-category accuracy, speed percentiles, tokens, error rate. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{evaluation/}: running the cases}} \\
+\code{executor.py} & Safe AI calls: concurrency and per-minute limits, retries, early stop, statistics. \\
+\code{cache.py} & Stores and reuses identical answers on disk (three modes). \\
+\code{runner.py} & Per case: build request, call, read, score. Then totals and run status. \\[4pt]
+\multicolumn{2}{@{}l}{\textbf{\code{storage/}, \code{services/}, \code{cli/}, \code{notifications/}}} \\
+\code{storage/file_store.py} & Saves, finds and lists runs as JSON files. \\
+\code{services/invoke.py} & Classify one input once (\code{try} command). \\
+\code{services/datasets.py} & Load an application's dataset. \\
+\code{services/run_service.py} & Full run: prepare, budget check, execute, git version, save. \\
+\code{cli/main.py} & All commands. Only input and display; logic lives in services. \\
+\code{notifications/slack.py} & \empt{} Slack alerts (Phase 7). \\
+\bottomrule
+\end{longtable}
+
+\subsection{Tests (\texorpdfstring{\texttt{backend/tests/}}{backend/tests/})}
+\begin{longtable}{@{}p{0.34\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{What it checks} \\
+\midrule
+\endhead
+\code{conftest.py} & Shared helpers (paths, a clean environment without real settings). \\
+\code{test_config.py} & Settings, \code{.env} discovery, the secret never appearing in logs. \\
+\code{test_errors.py}, \code{test_logging.py}, \code{test_types.py} & Error types, log output, data shapes. \\
+\code{test_openai_compatible.py} & The real provider against simulated responses: success, rate limit, server error, bad key, timeout, malformed answers, readable messages. \\
+\code{test_mock_and_factory.py} & Fake provider and provider selection. \\
+\code{test_prompts.py} & Prompt validation, fingerprints, rendering. \\
+\code{test_apps.py} & Reading AI answers (valid and invalid), application config. \\
+\code{test_invoke.py} & The single-call service. \\
+\code{test_datasets.py} & Dataset loading, errors, fingerprints, privacy checks, statistics, selection. \\
+\code{test_executor.py} & Retries, waits, early stop, per-minute limit, cache modes (fake clock: instant tests). \\
+\code{test_runner.py} & Full run with correct, wrong, invalid and failed answers; totals; status; traceability. \\
+\code{test_run_service.py} & Preparation, budget guard, saving, cached rerun, empty selection refused. \\
+\code{test_cli*.py} & Every command end to end; the committed golden dataset must always be valid. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Real results obtained}\label{sec:results}
+
+\subsection{First real call (Phase 2)}
+The email ``I was charged twice this month and need a refund'' was classified as
+\code{billing} with a correct summary. A different model was needed temporarily because the
+free Gemma models were overloaded (section~\ref{sec:difficulties}).
+
+\subsection{Acceptance test of the evaluation engine (Phase 4)}
+Command \texttt{regguard run -p v1 -{}-limit 12} (12 cases, 3 per category) on the real API:
+
+\begin{center}
+\begin{tabular}{@{}lllll p{0.36\linewidth}@{}}
+\toprule
+\textbf{Run} & \textbf{Status} & \textbf{API calls} & \textbf{Cached} & \textbf{Correct} & \textbf{Explanation} \\
+\midrule
+1 & ERROR & 30 & 0 & 10/10 answered & 2 cases failed with HTTP 504 (provider timeout) after all retries; 17\% $>$ 10\% limit, so correctly \code{ERROR}, not wrong answers. \\
+2 & COMPLETED & 3 & 10 & 12/12 & Only the 2 failed cases were called again. \\
+3 & COMPLETED & 0 & 12 & 12/12 & Fully reused: re-running an unchanged prompt costs nothing. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Measured on fresh calls: about \textbf{1.5 seconds per answer} and \textbf{410 tokens per
+case} (about 25 of them for the answer itself).
+
+\keyidea{The system survives an unreliable free service, never confuses technical failures
+with quality problems, wastes no quota on repeated work, and records enough information to
+trust and reproduce every result.}
+
+An earlier attempt, before the provider fix, is also instructive: every call was refused
+(rate limit); the engine retried, then stopped the run early and marked it \code{ERROR}. The
+safety mechanisms worked as designed.
+
+% ===========================================================================
+\section{Difficulties met and how they were solved}\label{sec:difficulties}
+
+\begin{longtable}{@{}p{0.03\linewidth}p{0.25\linewidth}p{0.27\linewidth}p{0.38\linewidth}@{}}
+\toprule
+\textbf{\#} & \textbf{Difficulty} & \textbf{Cause} & \textbf{Solution} \\
+\midrule
+\endhead
+1 & \code{uv} ``not recognised'' after installing & Terminal kept the old program-location list (PATH). & Restart VS Code completely. \\
+2 & Confusion between commit, push and GitHub & Git saves locally first; GitHub needs a repository and a push. & Created the private repository, then commit and push. \\
+3 & Installer refused the project & Packaging rule (README outside the project folder). & Removed that setting. \\
+4 & \textbf{Windows Smart App Control blocked Python} & Windows switched this security feature to ``enforce''; it blocks unsigned programs (uv's Python, tool launchers). & Diagnosed via registry and signature checks; switched to the officially signed Python 3.14; tools run with \texttt{python -m}; mypy installed from source. Security feature kept on (it cannot be re-enabled once off). ADR 0004. GitHub still tests 3.12. \\
+5 & \textbf{Free AI model constantly refused requests (HTTP 429)} & Free Gemma models share one overloaded Google pool for all OpenRouter users; another free Gemma used the same pool. & Added a free personal Google AI Studio key in OpenRouter (BYOK): requests use your own quota. \\
+6 & Some requests failed with HTTP 504 & Temporary provider overload. & Automatic retries; failures are not cached, so re-running only retries those. \\
+7 & Retries too fast for rate limits (32 calls wasted) & 0.1--7\,s waits do not help when a pool is saturated for minutes. & Rate-limit waits now 2.5--5, 5--10, 10--20, 20--40\,s; shorter logs. \\
+8 & Temporary model had hidden ``thinking'' (132 tokens for a 25-token answer, 21\,s) & Nemotron is a reasoning model. & Noted: reasoning must be controlled for the judge in Phase 5. \\
+9 & Test with another model looked like a normal \code{v1} run & Model override did not change the recorded fingerprint. & Results now record the model used, an override flag and the model actually served. \\
+10 & A JSON list was accepted as a valid answer & Lenient parsing. & Found by a test; fixed. \\
+11 & 0 selected cases reported ``COMPLETED, 0\%'' & Missing check. & Empty selections refused with a clear message. \\
+12 & GitHub showed red failures on every push & Empty placeholder workflow file is invalid. & Removed; real one in Phase 9. \\
+13 & GitHub failed after real cases were committed & A test assumed the dataset stays empty. & Replaced: the committed dataset must always be valid. \\
+14 & A test case could not be read & Email written as two sub-fields instead of one text block. & Format explained; case fixed. \\
+15 & Labelling guide contradicted itself on pricing & ``prices'' under billing, ``student discount'' under general. & New rule: non-customers' pricing questions are \code{general}; questions about one's own charges are \code{billing}. \\
+16 & Dataset quality risks in batch 1 & 6 of 12 cases marked critical (target about 6 in 60); same layout everywhere; subjects gave away the answer. & Keep 2--3 critical cases; vary the email form (no subject, vague subject, typos, French/English). Added to the guide. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Important design decisions}\label{sec:decisions}
+
+\begin{longtable}{@{}p{0.42\linewidth}p{0.54\linewidth}@{}}
+\toprule
+\textbf{Decision} & \textbf{Reason} \\
+\midrule
+\endhead
+One well-organised program, not microservices (ADR 0001) & Simpler to build, test and deploy for one developer; layers keep it clean. \\
+Command line first; GitHub uses the same commands & The core works without any server; the dashboard comes later on top. \\
+Baselines are files in the repository (ADR 0002) & GitHub's machines are temporary; a file in the repository persists and its changes are reviewable. \\
+Baseline chosen explicitly, not ``the previous run'' & Comparing only with the previous run lets quality slowly slide. \\
+Alarm only when a drop is large \emph{and} unlikely to be random (ADR 0003) & With 60--100 cases one case is 1--1.7\%, and AI answers vary slightly; fixed thresholds alone give constant false alarms. \\
+Technical failures are never quality failures & A provider outage must not look like ``your prompt got worse''. \\
+Model and settings live in the prompt file & Changing the model is one of the changes we must detect and review. \\
+Retries in one place (the executor) & No stacked retries; honest speed measurements. \\
+Human-written golden data, never AI-generated & The answer key must be trustworthy. \\
+One correct category per case, with tie-break rules & Clear accuracy; ambiguous cases tagged and reported separately. \\
+YAML for the dataset & Multi-line emails readable and easy to write by hand. \\
+Cache on by default, with a budget guard & Free plans allow about 50 calls per day; repeated work must be free. \\
+Python 3.14 locally, 3.12+ supported (ADR 0004) & Required by Windows security; GitHub still tests 3.12. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Quality: how we know it works}
+\begin{itemize}
+  \item \textbf{151 automated tests}, all passing, covering 95\% of the application code; they
+        run offline in about 2 seconds thanks to the fake provider and a fake clock.
+  \item \textbf{Strict type checking} (mypy) on all code.
+  \item \textbf{Automatic layer check}: a lower layer can never depend on a higher one.
+  \item \textbf{Style and error checks} (ruff), including security rules.
+  \item \textbf{GitHub Actions} runs everything on every push, on two Python versions.
+  \item \textbf{The golden dataset is itself tested} on every push.
+  \item \textbf{Real-world verification} against the live AI, not only simulations.
+  \item About 2{,}500 lines of application code and 1{,}650 lines of tests.
+\end{itemize}
+
+% ===========================================================================
+\section{What remains to do}
+
+\begin{longtable}{@{}p{0.1\linewidth}p{0.84\linewidth}@{}}
+\toprule
+\textbf{Phase} & \textbf{Content} \\
+\midrule
+\endhead
+5a (next) & Comparison of two runs, baselines, case-level regressions and improvements, thresholds per metric, statistical significance, critical-case rule, final PASS / WARN / FAIL. Demo: v2 against v1. \\
+5b & Summary quality (meaning-based similarity and an AI judge), precision / recall / F1 per category, slow-drift detection. \\
+6 & Database and history, web API. \\
+7 & HTML reports and Slack notifications. \\
+8 & Web dashboard. \\
+9 & GitHub integration: automatic runs on prompt changes, pull-request comments, blocking merges on critical regressions. \\
+10 & Docker, security hardening, deployment. \\
+11 & Documentation, README, demo video. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Dataset work in progress:} 24 of the 60 target cases are written. Next batches should
+add medium and hard cases (ambiguous, typos, French/English, sarcasm, injection attempts) and
+reduce the number of \code{critical} cases.
+
+% ===========================================================================
+\section{How to run it}
+
+From the \code{backend} folder, in PowerShell:
+\begin{verbatim}
+# Run every quality check (same as GitHub)
+uv run python scripts/check.py
+
+# Check the golden dataset
+uv run python -m regguard dataset validate -c ..\examples\support-email-classifier\regguard.yaml
+uv run python -m regguard dataset stats    -c ..\examples\support-email-classifier\regguard.yaml
+
+# Classify one email
+uv run python -m regguard try -p v1 -c ..\examples\...\regguard.yaml -i "I was charged twice"
+
+# Evaluate prompt v1 on 12 balanced cases, then inspect results
+uv run python -m regguard run -p v1 -c ..\examples\...\regguard.yaml --limit 12
+uv run python -m regguard runs list
+uv run python -m regguard runs show <run-id>
+\end{verbatim}
+The private \code{.env} file at the repository root must contain the OpenRouter key:
+\code{REGGUARD_LLM_API_KEY=...}.
+
+% ===========================================================================
+\appendix
+\section{Commit history}
+\begin{center}
+\begin{tabular}{@{}lp{0.75\linewidth}@{}}
+\toprule
+\textbf{Commit} & \textbf{Content} \\
+\midrule
+\code{f6f0b71} & Phase 0: planning documents and repository setup \\
+\code{e5a5b61} & Phase 1: foundation (core types, settings, logging, command line, CI) \\
+\code{a1e9ceb} & Phase 2: AI providers, versioned prompts, \code{try} command \\
+\code{ef595dc} & Phase 3: golden dataset tools, labelling guide, Python 3.14 (ADR 0004) \\
+\code{f2e55f1}, \code{2454e41} & Dataset batch 1 (12 cases), guide clarifications, workflow fix \\
+\code{a182f2c} & Phase 4: evaluation engine, fixes, dataset batch 2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
