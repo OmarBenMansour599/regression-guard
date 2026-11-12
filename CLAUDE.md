@@ -20,10 +20,15 @@ CI for LLM behavior: evaluate prompt/model changes against a versioned, human-la
 - Infra errors are never reported as quality regressions (status `ERROR`).
 
 ## Commands (from `backend/`)
-- `uv sync` · `uv run pytest` · `uv run ruff check .` · `uv run ruff format .` · `uv run mypy src`
+- All checks (same as CI): `uv run python scripts/check.py`
+- Single tools: `uv run python -m pytest` · `uv run python -m ruff check .` · `uv run python -m ruff format .` · `uv run python -m mypy`
+- CLI: `uv run python -m regguard ...` (the `regguard` launcher may be blocked; `python -m` always works)
+- Always use `python -m <tool>`, never generated `.exe` launchers (Smart App Control, ADR 0004).
 
 ## Environment
-- Python 3.12 managed by uv (system Python 3.14 is NOT used). Windows + PowerShell dev machine; use `pathlib`, LF line endings.
+- Local: signed system Python 3.14 (`C:\Python314`), `.python-version` = 3.14. Supported: `>=3.12`; CI tests 3.12 and 3.14.
+- Windows 11 with Smart App Control ENFORCING: unsigned binaries (uv-managed Pythons, uv .exe launchers, some compiled wheels) are blocked. Never suggest disabling it. mypy is built from source for this reason.
+- PowerShell dev machine; use `pathlib`, LF line endings.
 - LLM access: OpenAI-compatible endpoints (OpenRouter, Groq; free tiers, strict rate limits -> low concurrency, cache, backoff).
 
 ## Status
@@ -34,6 +39,8 @@ CI for LLM behavior: evaluate prompt/model changes against a versioned, human-la
 - Real-API smoke test passed 2026-11-10 (via override `nvidia/nemotron-3.5-super-vl:free`: valid output, 21 s, 132 completion tokens for ~25 visible -> hidden reasoning tokens). Gemma `:free` variants share Google AI Studio's upstream pool and returned 429; fix = BYOK Google key in OpenRouter (pending, user).
 - Pending: CI on GitHub unverified; `gh` CLI (Phase 9).
 - Carry into Phase 4: (1) record the *effective* model in run metadata, since `REGGUARD_LLM_MODEL` override leaves the prompt hash unchanged; (2) readable upstream error messages (OpenRouter `metadata.raw`); (3) disable or budget reasoning tokens for reasoning models (latency + cost).
-- Not started: Phase 3 (golden dataset). Scaffold files executor.py, runner.py, slack.py are still empty.
-- Next action: Phase 3 plan (dataset schema/loader/hash, PII lint, labeling guide).
-- Known issues: on this Windows machine `uv run mypy` is blocked by an Application Control policy; use `uv run python -m mypy`. ci.yml runs on Linux and is unaffected.
+- Done: Phase 3 tooling (2026-11-12): `datasets/` models (GoldenCase, manifest, content hash excl. notes), loader reporting all problems at once, lint (PII heuristics + quality), stratified selection; `services/datasets.py`; CLI `dataset list|validate [--strict]|stats`; `docs/labeling-guide.md`; YAML dataset template (cases.jsonl removed). 114 tests; all checks pass on 3.14. ADR 0004 (Python 3.14 local / Smart App Control).
+- In progress (USER): writing golden cases, batch 1 = 12 cases (3/category) in `examples/support-email-classifier/datasets/emails/v1/cases.yaml`, then Claude reviews labels (review only, never author).
+- Not started: Phase 4 (evaluation engine) — can start once batch 1 validates. Scaffold files executor.py, runner.py, slack.py are still empty.
+- Next action: review user's batch 1; then Phase 4 plan.
+- Known issues: none open.

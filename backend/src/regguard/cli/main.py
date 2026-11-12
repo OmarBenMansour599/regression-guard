@@ -16,11 +16,16 @@ from regguard.apps.registry import get_app
 from regguard.core.config import load_settings
 from regguard.core.errors import ConfigError, DataValidationError, ProviderError
 from regguard.core.logging import configure_logging
+from regguard.datasets.lint import dataset_stats, lint_dataset
+from regguard.datasets.loader import list_versions
+from regguard.datasets.models import Dataset
 from regguard.prompts.loader import discover_prompts, load_prompt_version
 from regguard.providers.factory import build_provider
+from regguard.services.datasets import load_app_dataset
 from regguard.services.invoke import InvokeResult, invoke_once
 
 EXIT_SCHEMA_INVALID = 1
+EXIT_VALIDATION_FAILED = 1
 EXIT_CONFIG_ERROR = 2
 EXIT_PROVIDER_ERROR = 3
 
@@ -32,6 +37,8 @@ app = typer.Typer(
 )
 prompt_app = typer.Typer(help="Inspect versioned prompts.", no_args_is_help=True)
 app.add_typer(prompt_app, name="prompt")
+dataset_app = typer.Typer(help="Validate and inspect golden datasets.", no_args_is_help=True)
+app.add_typer(dataset_app, name="dataset")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", "-c", help="Path to the app's regguard.yaml.")
@@ -96,6 +103,78 @@ def prompt_show(version: str, config: ConfigOption = Path("regguard.yaml")) -> N
     typer.echo(f"model:     {p.model.model} (temperature={p.model.temperature})")
     typer.echo(f"few-shot:  {len(p.few_shot)} example(s)\n\n--- system ---\n{p.system}")
     typer.echo(f"\n--- user template ---\n{p.user_template}")
+
+
+VersionOption = Annotated[
+    str | None, typer.Option("--version", "-v", help="Dataset version (default: latest).")
+]
+
+
+def _load_dataset_or_exit(config: Path, version: str | None) -> tuple[Dataset, AppConfig]:
+    cfg = _load_config(config)
+    try:
+        spec = get_app(cfg.app)
+        return load_app_dataset(cfg, spec, version), cfg
+    except ConfigError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_VALIDATION_FAILED) from exc
+
+
+@dataset_app.command("list")
+def dataset_list(config: ConfigOption = Path("regguard.yaml")) -> None:
+    """List dataset versions."""
+    cfg = _load_config(config)
+    if cfg.datasets_dir is None:
+        raise _fail("no datasets_dir in regguard.yaml", EXIT_CONFIG_ERROR)
+    try:
+        versions = list_versions(cfg.datasets_dir)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    for version in versions:
+        typer.echo(version)
+
+
+@dataset_app.command("validate")
+def dataset_validate(
+    version: VersionOption = None,
+    strict: Annotated[bool, typer.Option(help="Treat warnings as failures (use in CI).")] = False,
+    min_cases: Annotated[int, typer.Option(help="Warn below this many cases.")] = 50,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Validate a dataset: schema, ids, labels, plus privacy and quality warnings."""
+    dataset, cfg = _load_dataset_or_exit(config, version)
+    spec = get_app(cfg.app)
+    findings = lint_dataset(
+        dataset,
+        label_field=spec.label_field,
+        summary_field=spec.summary_field,
+        min_cases=min_cases,
+    )
+    m = dataset.manifest
+    typer.echo(f"{m.name}@{m.version}: {len(dataset.cases)} cases, {dataset.content_hash[:19]}")
+    for f in findings:
+        where = f"[{f.case_id}] " if f.case_id else ""
+        typer.secho(f"  warning {f.code}: {where}{f.message}", fg=typer.colors.YELLOW)
+    if findings and strict:
+        raise _fail(f"{len(findings)} warning(s) in strict mode", EXIT_VALIDATION_FAILED)
+    typer.secho(
+        "OK" if not findings else f"OK with {len(findings)} warning(s)", fg=typer.colors.GREEN
+    )
+
+
+@dataset_app.command("stats")
+def dataset_stats_cmd(
+    version: VersionOption = None, config: ConfigOption = Path("regguard.yaml")
+) -> None:
+    """Show case counts by label, difficulty and tag."""
+    dataset, cfg = _load_dataset_or_exit(config, version)
+    stats = dataset_stats(dataset, label_field=get_app(cfg.app).label_field)
+    typer.echo(f"{dataset.manifest.name}@{dataset.manifest.version}")
+    for section, counts in stats.items():
+        typer.echo(f"\n{section}:")
+        for key, n in counts.items():
+            typer.echo(f"  {key:<20} {n}")
 
 
 @app.command("try")

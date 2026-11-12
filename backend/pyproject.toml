@@ -26,6 +26,11 @@ dev = [
     "import-linter>=2.1",
 ]
 
+[tool.uv]
+# mypy's wheels ship unsigned compiled modules that Windows Smart App Control blocks.
+# Built from source it is pure Python: slower (~10 s) but runs everywhere. See ADR 0004.
+no-binary-package = ["mypy"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -71,7 +76,7 @@ layers = [
     "regguard.cli",
     "regguard.services",
     "regguard.apps",
-    "regguard.prompts",
+    "regguard.prompts | regguard.datasets",
     "regguard.providers",
     "regguard.core",
 ]

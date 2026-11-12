@@ -1,0 +1,25 @@
+# Golden test cases for the support-email classifier. Read docs/labeling-guide.md first.
+#
+# Rules: written and labeled by a human (no LLM), fictional people only, use
+# example.com addresses. Never renumber or reuse an id.
+#
+# Check your work from backend/:
+#   uv run python -m regguard dataset validate -c ../examples/support-email-classifier/regguard.yaml
+#
+# Template (copy it, then delete the leading "# " on each line):
+#
+# - id: email-0001
+#   input:
+#     email: |
+#       Write the customer's email here.
+#       It can span several lines.
+#   expected:
+#     category: billing        # billing | technical | account | general
+#     summary: "Customer ... (one sentence, in English)."
+#   difficulty: easy           # easy | medium | hard
+#   tags: []                   # e.g. [ambiguous, typo]
+#   critical: false
+#   notes: "Why this case matters."
+#
+# Replace the [] below with your list of cases.
+[]

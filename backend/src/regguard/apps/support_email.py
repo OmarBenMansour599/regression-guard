@@ -28,4 +28,6 @@ SPEC = AppSpec(
     output_model=SupportEmailOutput,
     input_variables=("email",),
     mock_response='{"category": "billing", "summary": "Customer reports a duplicate charge."}',
+    label_field="category",
+    summary_field="summary",
 )

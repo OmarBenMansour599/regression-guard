@@ -22,6 +22,8 @@ class AppSpec:
     output_model: type[BaseModel]
     input_variables: tuple[str, ...]
     mock_response: str  # valid example output, used by the offline mock provider
+    label_field: str | None = None  # categorical output field (stratification, per-label stats)
+    summary_field: str | None = None  # free-text output field checked as one sentence
 
 
 def extract_json(text: str) -> dict[str, Any]:
