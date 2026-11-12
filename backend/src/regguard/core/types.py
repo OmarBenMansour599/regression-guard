@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class _Frozen(BaseModel):
+class FrozenModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
@@ -33,7 +33,7 @@ class Trigger(StrEnum):
     SCHEDULE = "schedule"
 
 
-class Usage(_Frozen):
+class Usage(FrozenModel):
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
 
@@ -42,7 +42,7 @@ class Usage(_Frozen):
         return self.prompt_tokens + self.completion_tokens
 
 
-class Completion(_Frozen):
+class Completion(FrozenModel):
     text: str
     usage: Usage
     latency_ms: float = Field(ge=0)
@@ -50,20 +50,20 @@ class Completion(_Frozen):
     cached: bool = False
 
 
-class MetricScore(_Frozen):
+class MetricScore(FrozenModel):
     name: str
     value: float
     passed: bool | None = None  # None for purely informational metrics
     detail: dict[str, Any] = Field(default_factory=dict)
 
 
-class CaseError(_Frozen):
+class CaseError(FrozenModel):
     type: str  # e.g. "timeout", "rate_limit", "invalid_json"
     message: str
     retryable: bool = False
 
 
-class CaseResult(_Frozen):
+class CaseResult(FrozenModel):
     case_id: str
     sample_idx: int = Field(default=0, ge=0)
     raw_output: str | None = None
@@ -76,14 +76,14 @@ class CaseResult(_Frozen):
     error: CaseError | None = None
 
 
-class AggregateScore(_Frozen):
+class AggregateScore(FrozenModel):
     value: float
     n: int = Field(ge=0)
     ci_low: float | None = None
     ci_high: float | None = None
 
 
-class RunMeta(_Frozen):
+class RunMeta(FrozenModel):
     run_id: str
     app: str
     prompt_version: str
@@ -101,7 +101,7 @@ class RunMeta(_Frozen):
     regguard_version: str
 
 
-class RunResult(_Frozen):
+class RunResult(FrozenModel):
     meta: RunMeta
     status: RunStatus
     cases: list[CaseResult]

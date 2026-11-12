@@ -29,7 +29,11 @@ CI for LLM behavior: evaluate prompt/model changes against a versioned, human-la
 ## Status
 - Decisions approved: modular monolith; file baselines in CI + DB for history; significance-aware gating; dashboard deferred until CLI/engine/CI are solid; private repo; OpenRouter/Groq as providers.
 - Done: Phase 0 docs; Phase 1 foundation (pyproject, core config/errors/logging/types, CLI `--version`, 18 unit tests, import-linter contract, CI workflow, pre-commit, .env.example). Verified locally: ruff, ruff format, mypy strict, pytest, lint-imports all pass.
-- Pending: first CI run on GitHub (not yet verified); install `gh` CLI (needed by Phase 9); `pre-commit install` (optional).
-- Not started: Phase 2 (providers, prompts). Scaffold files for later phases are still empty.
-- Next action: Phase 2 plan (OpenAI-compatible provider, prompt loader, mock provider).
+- Done: Phase 2 (OpenAI-compatible httpx provider, mock provider, factory; versioned prompt schema/loader/renderer/hash; AppSpec + support-email schema + registry; regguard.yaml loader; `invoke` service; CLI `prompt list|show`, `try`). 81 tests, 96% coverage; ruff, mypy strict, lint-imports (6-layer contract) pass. LiteLLM dropped.
+- Models (2026-11-10, OpenRouter): classifier `google/gemma-4-26b-a4b-it:free`, judge `nvidia/nemotron-3.5-super-vl:free`. Free tier: 20 req/min, 50 req/day (<$10 credits) or 1000/day.
+- Real-API smoke test passed 2026-11-10 (via override `nvidia/nemotron-3.5-super-vl:free`: valid output, 21 s, 132 completion tokens for ~25 visible -> hidden reasoning tokens). Gemma `:free` variants share Google AI Studio's upstream pool and returned 429; fix = BYOK Google key in OpenRouter (pending, user).
+- Pending: CI on GitHub unverified; `gh` CLI (Phase 9).
+- Carry into Phase 4: (1) record the *effective* model in run metadata, since `REGGUARD_LLM_MODEL` override leaves the prompt hash unchanged; (2) readable upstream error messages (OpenRouter `metadata.raw`); (3) disable or budget reasoning tokens for reasoning models (latency + cost).
+- Not started: Phase 3 (golden dataset). Scaffold files executor.py, runner.py, slack.py are still empty.
+- Next action: Phase 3 plan (dataset schema/loader/hash, PII lint, labeling guide).
 - Known issues: on this Windows machine `uv run mypy` is blocked by an Application Control policy; use `uv run python -m mypy`. ci.yml runs on Linux and is unaffected.

@@ -9,6 +9,7 @@ dependencies = [
     "typer>=0.12,<1",
     "structlog>=24.4",
     "pyyaml>=6.0",
+    "httpx>=0.27,<1",
 ]
 
 [project.scripts]
@@ -57,13 +58,20 @@ files = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 
 [tool.importlinter]
 root_package = "regguard"
 
 [[tool.importlinter.contracts]]
-name = "core must not depend on upper layers"
-type = "forbidden"
-source_modules = ["regguard.core"]
-forbidden_modules = ["regguard.cli"]
+name = "Layered architecture (higher layers may import lower ones, never the reverse)"
+type = "layers"
+layers = [
+    "regguard.cli",
+    "regguard.services",
+    "regguard.apps",
+    "regguard.prompts",
+    "regguard.providers",
+    "regguard.core",
+]

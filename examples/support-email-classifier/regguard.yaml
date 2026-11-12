@@ -1,0 +1,12 @@
+# Application under test: customer-support email classifier.
+# Paths are relative to this file. Metrics and thresholds are added in Phase 5.
+name: support-email-classifier
+app: support_email_classifier
+prompts_dir: prompts/classify
+datasets_dir: datasets/emails
+
+# LLM-as-judge for summary quality (Phase 5). Deliberately a different model family
+# from the classifier to reduce self-preference bias.
+judge:
+  model: nvidia/nemotron-3.5-super-vl:free
+  temperature: 0.0
