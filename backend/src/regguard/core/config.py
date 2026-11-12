@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     max_concurrency: int = Field(default=3, ge=1, le=64)
     request_timeout_s: float = Field(default=60.0, gt=0)
     max_retries: int = Field(default=4, ge=0, le=10)
+    requests_per_minute: int = Field(default=15, ge=1, le=10_000)  # OpenRouter free tier: 20
+    max_error_rate: float = Field(default=0.10, ge=0.0, le=1.0)  # above this, run = ERROR
+
+    # Local storage (relative to the working directory; both are git-ignored)
+    cache_dir: Path = Path(".regguard/cache")
+    runs_dir: Path = Path("runs")
 
     # Integrations
     slack_webhook_url: SecretStr | None = None

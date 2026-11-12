@@ -83,6 +83,22 @@ class AggregateScore(FrozenModel):
     ci_high: float | None = None
 
 
+class CaseSelection(FrozenModel):
+    """Which golden cases a run used (empty = all)."""
+
+    limit: int | None = None
+    ids: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    seed: int = 0
+
+
+class ExecutionStats(FrozenModel):
+    cache_mode: str = "off"
+    cache_hits: int = 0
+    api_calls: int = 0  # real provider calls, including retries
+    retries: int = 0
+
+
 class RunMeta(FrozenModel):
     run_id: str
     app: str
@@ -91,8 +107,13 @@ class RunMeta(FrozenModel):
     dataset_version: str
     dataset_hash: str
     provider: str
-    model: str
+    model: str  # model actually requested (prompt's model, or the override)
+    model_override: bool = False  # True if REGGUARD_LLM_MODEL replaced the prompt's model
+    served_models: tuple[str, ...] = ()  # model ids reported back by the provider
     params: dict[str, Any] = Field(default_factory=dict)
+    selection: CaseSelection = Field(default_factory=CaseSelection)
+    n_samples: int = Field(default=1, ge=1)
+    execution: ExecutionStats = Field(default_factory=ExecutionStats)
     judge: dict[str, Any] | None = None
     git_sha: str | None = None
     trigger: Trigger = Trigger.MANUAL

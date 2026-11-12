@@ -152,6 +152,22 @@ async def test_missing_usage_defaults_to_zero() -> None:
     assert completion.usage.total_tokens == 0
 
 
+async def test_upstream_error_message_is_readable() -> None:
+    body = {
+        "error": {
+            "message": "Provider returned error",
+            "code": 429,
+            "metadata": {"raw": "model:free is temporarily rate-limited upstream."},
+        }
+    }
+    provider = _provider(lambda r: httpx.Response(429, json=body))
+    with pytest.raises(ProviderError) as info:
+        await provider.complete(_request())
+    assert str(info.value) == (
+        "HTTP 429: Provider returned error: model:free is temporarily rate-limited upstream."
+    )
+
+
 async def test_api_key_not_in_error_messages() -> None:
     provider = _provider(lambda r: httpx.Response(401, text="invalid key"))
     with pytest.raises(ProviderError) as info:

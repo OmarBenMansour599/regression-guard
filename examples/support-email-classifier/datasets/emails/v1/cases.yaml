@@ -292,3 +292,242 @@
   tags: []
   critical: false
 
+
+# Batch 2: Cases 13-24
+# Medium difficulty with varied email formats and customer tones.
+
+- id: email-0013
+  input:
+    email: |
+      From: lucas.mitchell@example.com
+
+      Hello,
+
+      I have been using the same subscription for almost a year, but my latest monthly payment is higher than what I have been paying until now.
+
+      I haven't upgraded or changed anything. Could someone explain this difference? I would appreciate it if you could check whether the previous price can be restored.
+
+      Thanks,
+      Lucas
+  expected:
+    category: billing
+    summary: "Customer noticed an unexpected increase in their subscription payment and asks for an explanation and restoration of the previous price."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0014
+  input:
+    email: |
+      Subject: Question
+
+      Hi,
+
+      Since last week's update, the analytics export has been unusable. Every report I download contains incomplete data.
+
+      Honestly, I don't want another technical explanation. I've already lost several hours dealing with this. I'd rather get my money back for this month's subscription because the feature I paid for isn't usable.
+
+      Please tell me how we can proceed.
+
+      Alex
+  expected:
+    category: billing
+    summary: "Customer reports that analytics exports contain incomplete data and requests a refund for the current subscription."
+  difficulty: medium
+  tags: [ambiguous, refund, angry]
+  critical: false
+  notes: "The email describes a technical defect, but the customer's explicit main request is a refund. Billing takes priority under the refund tie-break rule."
+
+- id: email-0015
+  input:
+    email: |
+      From: nina.parker@example.com
+
+      Hey, quick question. My old bank card has expired and I need to replace it with a new one before the next payment. Can you tell me where to update the payment details?
+  expected:
+    category: billing
+    summary: "Customer wants to replace an expired payment card and asks how to update their payment details."
+  difficulty: medium
+  tags: [short]
+  critical: false
+
+- id: email-0016
+  input:
+    email: |
+      Subject: Help
+
+      Hello support,
+
+      Our team has noticed that documents uploaded to the shared workspace are no longer appearing for other members.
+
+      The uploader can still see the files, but nobody else can access them. We checked the sharing permissions and they seem correct.
+
+      This is affecting our daily workflow. Could you investigate what's happening?
+
+      Regards,
+      Ethan
+  expected:
+    category: technical
+    summary: "Customer reports that uploaded documents are not appearing for other workspace members and requests an investigation."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0017
+  input:
+    email: |
+      WHY IS THIS STILL HAPPENING???
+
+      I have tried connecting my calendar three times today and it keeps disconnecting after a few minutes. I have to reconnect everything manually.
+
+      This is getting ridiculous. Please FIX the integration instead of sending me another generic troubleshooting article.
+  expected:
+    category: technical
+    summary: "Customer reports that the calendar integration repeatedly disconnects and requests a permanent fix."
+  difficulty: medium
+  tags: [angry]
+  critical: false
+
+- id: email-0018
+  input:
+    email: |
+      Forwarded message
+
+      From: peter.collins@example.com
+      Date: Monday
+
+      I noticed something strange when using the mobile application. Notifications arrive normally on my laptop, but the mobile app does not display any notifications, even though they are enabled in the settings.
+
+      I already restarted my phone and reinstalled the application without success.
+
+      Could your technical team take a look?
+
+      Peter
+  expected:
+    category: technical
+    summary: "Customer reports that mobile notifications are not appearing despite being enabled and requests technical assistance."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0019
+  input:
+    email:  |
+      subject: "Question about my account"
+        Hello,
+
+        I received the verification link when creating my account, but it had already expired when I tried to use it.
+
+        Now I cannot complete the registration process or access the platform.
+
+        Could you send me a new verification link?
+
+        Thank you,
+        Rebecca
+  expected:
+    category: account
+    summary: "Customer cannot complete account registration because their verification link expired and requests a new link."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0020
+  input:
+    email: |
+      Bonjour,
+
+      J'arrive plus à accéder à mon compte depuis ce matin. My password seems correct, but the login page keeps saying that my credentials are invalid.
+
+      J'ai essayé plusieurs fois et je ne sais plus quoi faire. Could you help me recover access to my account?
+
+      Merci,
+      Karim
+  expected:
+    category: account
+    summary: "Customer cannot log in despite believing their password is correct and requests help recovering account access."
+  difficulty: medium
+  tags: [mixed_language]
+  critical: false
+
+- id: email-0021
+  input:
+    email: |
+      Hello team,
+
+      I have decided to stop using the platform and would like to have my entire account permanently deleted.
+
+      I am not asking to cancel a subscription or simply stop notifications. I want my profile and associated account information removed.
+
+      Please explain the steps and confirm when the deletion is complete.
+
+      Regards,
+      Natalie
+  expected:
+    category: account
+    summary: "Customer requests permanent deletion of their account and associated profile information."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0022
+  input:
+    email: |
+      From: oliver.reed@example.com
+      Subject: Getting started
+
+      Hi there,
+
+      Our company is considering using your platform for a team of around 15 people.
+
+      Before making a decision, I'd like to know how administrators can invite colleagues and assign different roles to them.
+
+      Is there a guide explaining the process?
+
+      Best,
+      Oliver
+  expected:
+    category: general
+    summary: "Prospective customer asks how administrators can invite colleagues and assign roles on the platform."
+  difficulty: medium
+  tags: []
+  critical: false
+
+- id: email-0023
+  input:
+    email: |
+      Subject: A small idea...
+
+      Another suggestion from a very happy customer!
+
+      Would it be possible to add the option of scheduling reports to be generated automatically every Monday morning?
+
+      At the moment, I have to remember to do it manually every single week. I'm sure I'm not the only person who would appreciate this.
+
+      Thanks for considering it.
+  expected:
+    category: general
+    summary: "Customer requests an option to automatically schedule recurring report generation."
+  difficulty: medium
+  tags: [sarcasm]
+  critical: false
+
+- id: email-0024
+  input:
+    email: |
+      Hi,
+
+      We're currently comparing several platforms for a project that hasn't started yet.
+
+      Your website mentions different subscription options, but I couldn't find a clear explanation of whether the plans include unlimited team members or charge extra for additional users.
+
+      Could you clarify the pricing structure before we make a decision?
+
+      Thanks!
+  expected:
+    category: general
+    summary: "Prospective customer asks whether subscription plans include unlimited team members or charge extra for additional users."
+  difficulty: medium
+  tags: []
+  critical: false
+
+

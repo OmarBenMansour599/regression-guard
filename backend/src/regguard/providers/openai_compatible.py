@@ -81,11 +81,27 @@ def _http_error(response: httpx.Response) -> ProviderError:
         except ValueError:
             retry_after = None  # HTTP-date form: let the executor use its own backoff
     return ProviderError(
-        f"HTTP {status}: {response.text[:_BODY_SNIPPET]}",
+        f"HTTP {status}: {_readable_error(response)}",
         retryable=status in _RETRYABLE_STATUS,
         status_code=status,
         retry_after_s=retry_after,
     )
+
+
+def _readable_error(response: httpx.Response) -> str:
+    """Prefer the human message (incl. OpenRouter's upstream ``metadata.raw``) over raw JSON."""
+    try:
+        body = response.json()
+        error = body["error"]
+        message = str(error.get("message", "")).strip()
+        raw = (error.get("metadata") or {}).get("raw")
+        if isinstance(raw, str) and raw.strip() and raw.strip() != message:
+            message = f"{message}: {raw.strip()}" if message else raw.strip()
+        if message:
+            return message[:_BODY_SNIPPET]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return response.text[:_BODY_SNIPPET]
 
 
 def _parse_response(

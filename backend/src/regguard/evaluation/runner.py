@@ -1,0 +1,149 @@
+"""Run a prepared set of golden cases through the executor and score them into a RunResult."""
+
+import asyncio
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from regguard import __version__
+from regguard.apps.base import AppSpec, parse_output
+from regguard.core.errors import DataValidationError
+from regguard.core.types import (
+    CaseResult,
+    CaseSelection,
+    ExecutionStats,
+    RunMeta,
+    RunResult,
+    RunStatus,
+    Trigger,
+)
+from regguard.datasets.models import Dataset, GoldenCase
+from regguard.evaluation.executor import Executor
+from regguard.metrics.aggregate import compute_aggregates
+from regguard.metrics.base import Metric, ScoringInput
+from regguard.prompts.models import PromptConfig
+from regguard.prompts.render import build_request
+
+ProgressCallback = Callable[[int, int], None]
+
+
+@dataclass(frozen=True)
+class RunPlan:
+    app_name: str
+    spec: AppSpec
+    prompt: PromptConfig
+    dataset: Dataset
+    cases: tuple[GoldenCase, ...]
+    metrics: Sequence[Metric]
+    selection: CaseSelection
+    n_samples: int = 1
+    model_override: str | None = None
+
+    @property
+    def total_calls(self) -> int:
+        return len(self.cases) * self.n_samples
+
+    @property
+    def model(self) -> str:
+        return self.model_override or self.prompt.model.model
+
+
+async def _run_case(
+    plan: RunPlan, executor: Executor, case: GoldenCase, sample_idx: int
+) -> CaseResult:
+    request = build_request(plan.prompt, case.input, model_override=plan.model_override)
+    outcome = await executor.call(request, sample_idx=sample_idx)
+    if outcome.completion is None:
+        return CaseResult(case_id=case.id, sample_idx=sample_idx, passed=False, error=outcome.error)
+
+    completion = outcome.completion
+    output: dict[str, object] | None
+    parse_error: str | None = None
+    try:
+        output = parse_output(completion.text, plan.spec).model_dump(mode="json")
+    except DataValidationError as exc:
+        output, parse_error = None, str(exc)
+
+    item = ScoringInput(case=case, output=output, parse_error=parse_error)
+    scores = [m.score(item) for m in plan.metrics]
+    gating = {m.name for m in plan.metrics if m.gating}
+    passed = all(s.passed for s in scores if s.name in gating)
+    return CaseResult(
+        case_id=case.id,
+        sample_idx=sample_idx,
+        raw_output=completion.text,
+        parsed_output=output,
+        scores=scores,
+        passed=passed,
+        latency_ms=completion.latency_ms,
+        usage=completion.usage,
+        cached=completion.cached,
+    )
+
+
+async def execute_run(
+    plan: RunPlan,
+    executor: Executor,
+    *,
+    run_id: str,
+    provider_name: str,
+    cache_mode: str,
+    max_error_rate: float,
+    git_sha: str | None = None,
+    trigger: Trigger = Trigger.MANUAL,
+    on_progress: ProgressCallback | None = None,
+) -> RunResult:
+    started_at = datetime.now(UTC)
+    total = plan.total_calls
+    done = 0
+
+    async def tracked(case: GoldenCase, sample_idx: int) -> CaseResult:
+        nonlocal done
+        result = await _run_case(plan, executor, case, sample_idx)
+        done += 1
+        if on_progress is not None:
+            on_progress(done, total)
+        return result
+
+    results = await asyncio.gather(
+        *(tracked(case, s) for case in plan.cases for s in range(plan.n_samples))
+    )
+    aggregates = compute_aggregates(results, plan.cases, label_field=plan.spec.label_field)
+    error_rate = aggregates["error_rate"].value
+
+    status, error = RunStatus.COMPLETED, None
+    if executor.aborted_reason is not None:
+        status, error = RunStatus.ERROR, f"aborted: {executor.aborted_reason}"
+    elif error_rate > max_error_rate:
+        status = RunStatus.ERROR
+        error = f"error rate {error_rate:.0%} exceeds the {max_error_rate:.0%} limit"
+
+    meta = RunMeta(
+        run_id=run_id,
+        app=plan.app_name,
+        prompt_version=plan.prompt.version,
+        prompt_hash=plan.prompt.content_hash,
+        dataset_version=plan.dataset.manifest.version,
+        dataset_hash=plan.dataset.content_hash,
+        provider=provider_name,
+        model=plan.model,
+        model_override=plan.model_override is not None,
+        served_models=tuple(sorted(executor.served_models)),
+        params=plan.prompt.model.model_dump(mode="json", exclude={"model"}),
+        selection=plan.selection,
+        n_samples=plan.n_samples,
+        execution=ExecutionStats(
+            cache_mode=cache_mode,
+            cache_hits=executor.cache_hits,
+            api_calls=executor.api_calls,
+            retries=executor.retries,
+        ),
+        git_sha=git_sha,
+        trigger=trigger,
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+        regguard_version=__version__,
+    )
+    return RunResult(
+        meta=meta, status=status, cases=list(results), aggregates=aggregates, error=error
+    )

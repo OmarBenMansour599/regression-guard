@@ -64,8 +64,15 @@ def test_stats_and_list(tmp_path: Path) -> None:
     assert listing.stdout.strip() == "v1"
 
 
-def test_example_template_reports_no_cases_yet() -> None:
+def test_committed_golden_dataset_is_valid() -> None:
+    """Guards the real golden dataset: every committed case must load and validate."""
     config = str(EXAMPLE_APP / "regguard.yaml")
+    result = runner.invoke(app, ["dataset", "validate", "-c", config])
+    assert result.exit_code == 0, result.output
+
+
+def test_empty_cases_file_reports_no_cases_yet(tmp_path: Path) -> None:
+    config = _app_dir(tmp_path, [])
     result = runner.invoke(app, ["dataset", "validate", "-c", config])
     assert result.exit_code == EXIT_VALIDATION_FAILED
     assert "no cases yet" in result.output

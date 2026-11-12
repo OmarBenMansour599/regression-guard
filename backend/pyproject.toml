@@ -50,7 +50,7 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S", "ASYNC"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S311"]
 "src/regguard/core/types.py" = ["S105"]  # enum member PASS is not a password
 
 [tool.mypy]
@@ -75,8 +75,10 @@ type = "layers"
 layers = [
     "regguard.cli",
     "regguard.services",
+    "regguard.evaluation",
+    "regguard.metrics",
     "regguard.apps",
-    "regguard.prompts | regguard.datasets",
+    "regguard.prompts | regguard.datasets | regguard.storage",
     "regguard.providers",
     "regguard.core",
 ]
