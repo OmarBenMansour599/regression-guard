@@ -22,7 +22,7 @@ real one. Accuracy and consistency matter more than volume.
 
 | Category | Use it when the customer needs... | Examples |
 |---|---|---|
-| `billing` | Anything about money: charges, invoices, refunds, payment methods, prices, plan upgrades or downgrades, cancelling a paid subscription | Double charge, invoice correction, card update, "why did the price go up?" |
+| `billing` | Anything about money **on an existing account**: charges, invoices, refunds, payment methods, their current price, plan upgrades or downgrades, cancelling a paid subscription | Double charge, invoice correction, card update, "why did my price go up?" |
 | `technical` | The product or service is **not working as it should**: errors, bugs, crashes, outages, slowness, integrations or API failing | App crashes on export, 500 error on the dashboard, sync stopped |
 | `account` | Something about **their own access or identity**: login, password, 2FA, locked account, email or profile changes, creating, merging or deleting an account | Forgot password, account locked, change the account email address |
 | `general` | Everything else: pre-sales questions, how-to questions where nothing is broken, feedback, compliments, feature requests, partnership or press inquiries | "Do you offer a student discount?", "Love the new design", "Can you add dark mode?" |
@@ -40,6 +40,8 @@ explain your reasoning in `notes`.
 | A feature is broken and the customer **wants it fixed** | `technical` | |
 | A feature is broken and the customer **wants money back** | `billing` | The request is a refund. |
 | Cancel a paid subscription | `billing` | |
+| Pricing or discount question from someone **not yet paying** | `general` | Pre-sales; nothing on their account to act on. |
+| Question about the price **they are being charged** | `billing` | |
 | Delete the account itself | `account` | |
 | "How do I do X?" and nothing is broken | `general` | |
 | Several unrelated issues | The most urgent or main one | Tag `multi_issue`. |
@@ -98,6 +100,10 @@ Across the whole dataset, aim for:
 - **Tag quotas:** about 8 `ambiguous`, 5 `multi_issue`, 5 `typo`, 4 `short`,
   4 `mixed_language`, 2 `french`, 3 `sarcasm`, 3 `injection`, 3 `long`.
 - **Variety in tone:** polite, angry, formal, casual, and non-native English.
+- **Variety in form:** don't use the same `From:` / `Subject:` / greeting / signature layout every time.
+  Mix in emails with no subject, no greeting, a single line, or a forwarded thread. Also include
+  subjects that are vague ("Help", "Question") or misleading. A subject like "Forgot my password"
+  gives the label away, so the model never has to read the body.
 
 `regguard dataset stats` shows where you stand.
 

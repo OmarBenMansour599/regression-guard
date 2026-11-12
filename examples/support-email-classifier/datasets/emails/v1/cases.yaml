@@ -22,4 +22,273 @@
 #   notes: "Why this case matters."
 #
 # Replace the [] below with your list of cases.
-[]
+
+
+- id: email-0001
+  input:
+    email: |
+      From: sophie.martin@example.com
+      Subject: Unexpected charge on my account
+
+      Hello,
+
+      I noticed that I was charged $49.99 for my monthly subscription, but I thought my plan cost $29.99.
+
+      Could you please explain why I was charged this amount and check whether I can get a refund for the difference?
+
+      Thank you,
+      Sophie
+  expected:
+    category: billing
+    summary: "Customer was charged more than expected for a monthly subscription and requests an explanation and refund."
+  difficulty: easy
+  tags: [refund]
+  critical: true
+
+- id: email-0002
+  input:
+    email: |
+      From: thomas.brown@example.com
+      Subject: Request for an invoice
+
+      Hi Support,
+
+      I recently purchased your Professional plan and need an invoice for my accounting records.
+
+      Could you send me the invoice for my latest payment?
+
+      Best regards,
+      Thomas
+  expected:
+    category: billing
+    summary: "Customer requests an invoice for their latest Professional plan payment."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0003
+  input:
+    email: |
+      From: emily.clark@example.com
+      Subject: Cancel my subscription
+
+      Hello,
+
+      I would like to cancel my paid subscription effective immediately. I no longer need the service and don't want to be charged again next month.
+
+      Please confirm once the cancellation has been processed.
+
+      Regards,
+      Emily
+  expected:
+    category: billing
+    summary: "Customer wants to cancel their paid subscription to avoid future charges."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0004
+  input:
+    email: |
+      From: david.wilson@example.com
+      Subject: Export feature keeps crashing
+
+      Hello Support Team,
+
+      Every time I try to export a report as a PDF, the application crashes and closes unexpectedly.
+
+      I have tried restarting the application, but the problem persists.
+
+      Could you investigate and fix this issue?
+
+      Thank you,
+      David
+  expected:
+    category: technical
+    summary: "Customer reports that the application crashes when exporting PDF reports and requests a fix."
+  difficulty: easy
+  tags: []
+  critical: true
+
+- id: email-0005
+  input:
+    email: |
+      From: olivia.taylor@example.com
+      Subject: API requests returning errors
+
+      Hi,
+
+      Our integration was working correctly yesterday, but today all API requests are returning a 500 Internal Server Error.
+
+      We haven't changed anything in our integration configuration.
+
+      Could you check whether there is an issue with your API?
+
+      Best,
+      Olivia
+  expected:
+    category: technical
+    summary: "Customer reports that API requests are returning 500 errors and asks support to investigate."
+  difficulty: easy
+  tags: [outage]
+  critical: false
+
+- id: email-0006
+  input:
+    email: |
+      From: james.anderson@example.com
+      Subject: Dashboard is very slow
+
+      Hello,
+
+      The dashboard has become extremely slow over the last few days. Pages take almost a minute to load, whereas they used to open instantly.
+
+      This is making it difficult for our team to work efficiently.
+
+      Can you please look into the performance issue?
+
+      Regards,
+      James
+  expected:
+    category: technical
+    summary: "Customer reports that dashboard pages are loading unusually slowly and requests an investigation."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0007
+  input:
+    email: |
+      From: charlotte.evans@example.com
+      Subject: Forgot my password
+
+      Hello,
+
+      I cannot remember my password and therefore cannot log in to my account.
+
+      I tried the password reset option, but I am not sure how to complete the process.
+
+      Could you guide me through resetting my password?
+
+      Thank you,
+      Charlotte
+  expected:
+    category: account
+    summary: "Customer cannot access their account because they forgot their password and requests help resetting it."
+  difficulty: easy
+  tags: []
+  critical: true
+
+- id: email-0008
+  input:
+    email: |
+      From: michael.harris@example.com
+      Subject: Change of email address
+
+      Hi Support,
+
+      I recently changed my personal email address and would like to update the email associated with my account.
+
+      Please let me know how I can replace my current email address with my new one.
+
+      Best regards,
+      Michael
+  expected:
+    category: account
+    summary: "Customer wants to change the email address associated with their account."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0009
+  input:
+    email: |
+      From: amelia.white@example.com
+      Subject: My account has been locked
+
+      Hello,
+
+      I tried logging into my account several times and now it says that my account has been temporarily locked.
+
+      I am sure I am using the correct credentials.
+
+      Could you help me unlock my account so I can access the service again?
+
+      Regards,
+      Amelia
+  expected:
+    category: account
+    summary: "Customer's account has been temporarily locked and they request help restoring access."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0010
+  input:
+    email: |
+      From: benjamin.moore@example.com
+      Subject: Do you offer student discounts?
+
+      Hello,
+
+      I am currently a university student and I am interested in subscribing to your Professional plan.
+
+      Do you offer any special pricing or discounts for students?
+
+      Thank you for your help.
+
+      Best regards,
+      Benjamin
+  expected:
+    category: general
+    summary: "Customer asks whether discounted Professional plans are available for students."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0011
+  input:
+    email: |
+      From: grace.thompson@example.com
+      Subject: Feature suggestion: Dark mode
+
+      Hi team,
+
+      I really enjoy using your application. One feature I would love to see in a future update is a dark mode.
+
+      It would make working late at night much more comfortable.
+
+      Please consider adding this option!
+
+      Best,
+      Grace
+  expected:
+    category: general
+    summary: "Customer enjoys the application and suggests adding a dark mode feature."
+  difficulty: easy
+  tags: []
+  critical: false
+
+- id: email-0012
+  input:
+    email: |
+      From: henry.walker@example.com
+      Subject: Partnership opportunity
+
+      Dear Business Development Team,
+
+      My company provides digital consulting services, and we are interested in exploring a potential partnership with your organization.
+
+      We believe our services could complement your product offering.
+
+      Would it be possible to arrange a meeting to discuss potential collaboration opportunities?
+
+      Kind regards,
+      Henry
+  expected:
+    category: general
+    summary: "Customer proposes a business partnership and requests a meeting to discuss potential collaboration."
+  difficulty: easy
+  tags: []
+  critical: false
+
