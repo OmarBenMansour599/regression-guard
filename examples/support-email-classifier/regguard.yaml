@@ -1,12 +1,29 @@
 # Application under test: customer-support email classifier.
-# Paths are relative to this file. Metrics and thresholds are added in Phase 5.
+# Paths are relative to this file.
 name: support-email-classifier
 app: support_email_classifier
 prompts_dir: prompts/classify
 datasets_dir: datasets/emails
+baselines_dir: baselines # pinned baselines (change only via `regguard baseline promote`)
 
-# LLM-as-judge for summary quality (Phase 5). Deliberately a different model family
+# LLM-as-judge for summary quality (Phase 5b). Deliberately a different model family
 # from the classifier to reduce self-preference bias.
 judge:
   model: nvidia/nemotron-3.5-super-vl:free
   temperature: 0.0
+
+# Regression gate (ADR 0003). Deltas are candidate - baseline.
+# Negative threshold = a drop is bad; positive = a rise is bad.
+# absolute: rates in 0..1 (-0.03 = -3 points); relative: fraction of baseline (+0.25 = +25%).
+# Entries here override the built-in defaults of the same name.
+gate:
+  alpha: 0.10 # one-sided exact McNemar significance level
+  min_regressed_cases: 3 # ...or this many regressed cases also counts as evidence
+  schema_valid_floor: 0.95 # hard rule: FAIL below this, whatever the baseline was
+  critical_cases_must_not_regress: true # hard rule for cases marked `critical: true`
+  metrics:
+    label_exact: { warn: -0.03, critical: -0.08, unit: absolute }
+    schema_valid: { warn: -0.01, critical: -0.02, unit: absolute }
+    "label_exact/*": { warn: -0.05, critical: -0.12, unit: absolute } # per category
+    latency_ms_p95: { warn: 0.25, unit: relative, gating: false } # free tier is noisy
+    tokens_per_case: { warn: 0.20, critical: 0.50, unit: relative }

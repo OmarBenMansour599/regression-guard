@@ -25,6 +25,7 @@ class Verdict(StrEnum):
     PASS = "pass"
     WARN = "warn"
     FAIL = "fail"
+    ERROR = "error"  # candidate run had an infrastructure failure: not comparable
 
 
 class Trigger(StrEnum):
@@ -113,6 +114,8 @@ class RunMeta(FrozenModel):
     params: dict[str, Any] = Field(default_factory=dict)
     selection: CaseSelection = Field(default_factory=CaseSelection)
     n_samples: int = Field(default=1, ge=1)
+    case_labels: dict[str, str] = Field(default_factory=dict)  # case id -> golden label (slices)
+    critical_case_ids: tuple[str, ...] = ()  # golden cases marked `critical: true`
     execution: ExecutionStats = Field(default_factory=ExecutionStats)
     judge: dict[str, Any] | None = None
     git_sha: str | None = None
@@ -128,3 +131,91 @@ class RunResult(FrozenModel):
     cases: list[CaseResult]
     aggregates: dict[str, AggregateScore] = Field(default_factory=dict)
     error: str | None = None
+
+
+# --- baselines and comparisons --------------------------------------------------------------
+
+
+class BaselineHeader(FrozenModel):
+    name: str
+    app: str
+    source_run_id: str
+    promoted_at: datetime
+    git_sha: str | None = None  # repository state when the baseline was promoted
+    note: str = ""
+    regguard_version: str
+
+
+class BaselineFile(FrozenModel):
+    """A pinned, committed snapshot of a trusted run: ``<baselines_dir>/<name>.json``."""
+
+    header: BaselineHeader
+    run: RunResult
+
+
+class CaseChange(StrEnum):
+    REGRESSED = "regressed"  # passed in baseline, fails in candidate
+    IMPROVED = "improved"  # failed in baseline, passes in candidate
+    STILL_PASS = "still_pass"
+    STILL_FAIL = "still_fail"
+    NEW = "new"  # only in candidate
+    REMOVED = "removed"  # only in baseline
+    SKIPPED = "skipped"  # infra error in either run: excluded from pairing
+
+
+class CaseDiff(FrozenModel):
+    case_id: str
+    change: CaseChange
+    label: str | None = None
+    critical: bool = False
+    baseline_failed_metrics: tuple[str, ...] = ()
+    candidate_failed_metrics: tuple[str, ...] = ()
+
+
+class Severity(StrEnum):
+    INFO = "info"
+    WARN = "warn"
+    FAIL = "fail"
+
+
+class Reason(FrozenModel):
+    """Machine-readable reason for a verdict: ``code`` is stable, ``message`` is for people."""
+
+    code: str
+    severity: Severity
+    message: str
+    metric: str | None = None
+
+
+class ThresholdLevel(StrEnum):
+    OK = "ok"
+    WARN = "warn"
+    CRITICAL = "critical"
+
+
+class MetricDelta(FrozenModel):
+    metric: str
+    baseline: float
+    candidate: float
+    delta: float | None  # in `unit`; None when relative and baseline is 0
+    unit: str  # "absolute" or "relative"
+    n: int  # paired cases (binary metrics) or candidate sample size (others)
+    regressed: int | None = None  # paired pass->fail flips (binary metrics only)
+    improved: int | None = None
+    p_value: float | None = None  # one-sided exact McNemar (binary metrics only)
+    level: ThresholdLevel = ThresholdLevel.OK
+    gating: bool = False
+
+
+class Comparison(FrozenModel):
+    app: str
+    baseline_run_id: str
+    baseline_name: str | None = None  # None when comparing directly against a run
+    candidate_run_id: str
+    verdict: Verdict
+    reasons: list[Reason] = Field(default_factory=list)
+    metrics: list[MetricDelta] = Field(default_factory=list)
+    cases: list[CaseDiff] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)  # CaseChange value -> count
+    gate: dict[str, Any] = Field(default_factory=dict)  # the gate config used (reproducibility)
+    created_at: datetime

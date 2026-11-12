@@ -74,5 +74,6 @@ def test_total_tokens() -> None:
 
 
 def test_verdict_is_separate_from_run_status() -> None:
-    assert {v.value for v in Verdict} == {"pass", "warn", "fail"}
+    # ERROR = candidate run failed (infra): not comparable, never a quality FAIL.
+    assert {v.value for v in Verdict} == {"pass", "warn", "fail", "error"}
     assert {s.value for s in RunStatus} == {"completed", "error"}

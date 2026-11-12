@@ -1,0 +1,559 @@
+{
+  "header": {
+    "name": "main",
+    "app": "support-email-classifier",
+    "source_run_id": "20261112T134559Z-d06f57",
+    "promoted_at": "2026-11-12T15:41:01.620777Z",
+    "git_sha": "de17c19f22ea9f118eec31a831d38633c42b3a30-dirty",
+    "note": "v1, 12/12 correct",
+    "regguard_version": "0.1.0"
+  },
+  "run": {
+    "meta": {
+      "run_id": "20261112T134559Z-d06f57",
+      "app": "support-email-classifier",
+      "prompt_version": "v1",
+      "prompt_hash": "sha256:1b01bf65347781466283896d2387a6756049c6fbd4bf6ca5a1db62a803d61014",
+      "dataset_version": "v1",
+      "dataset_hash": "sha256:35b18b00df81de0b64b7d792df342c3143141afdc66c22810aebecc39e2aefdf",
+      "provider": "openai_compatible",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "model_override": false,
+      "served_models": [
+        "google/gemma-4-26b-a4b-it:free"
+      ],
+      "params": {
+        "temperature": 0.0,
+        "max_tokens": 200,
+        "seed": 42,
+        "json_mode": true,
+        "extra": {}
+      },
+      "selection": {
+        "limit": 12,
+        "ids": [],
+        "tags": [],
+        "seed": 0
+      },
+      "n_samples": 1,
+      "case_labels": {},
+      "critical_case_ids": [],
+      "execution": {
+        "cache_mode": "read-write",
+        "cache_hits": 12,
+        "api_calls": 0,
+        "retries": 0
+      },
+      "judge": null,
+      "git_sha": "2454e41cf2959dd192137a4701917a3de6f1b22b-dirty",
+      "trigger": "manual",
+      "started_at": "2026-11-12T13:45:59.886079Z",
+      "finished_at": "2026-11-12T13:45:59.889774Z",
+      "regguard_version": "0.1.0"
+    },
+    "status": "completed",
+    "cases": [
+      {
+        "case_id": "email-0003",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"billing\", \"summary\": \"The customer is requesting to cancel their paid subscription immediately to avoid future charges.\"}",
+        "parsed_output": {
+          "category": "billing",
+          "summary": "The customer is requesting to cancel their paid subscription immediately to avoid future charges."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "billing",
+              "actual": "billing"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1572.0205000252463,
+        "usage": {
+          "prompt_tokens": 380,
+          "completion_tokens": 26
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0005",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"technical\", \"summary\": \"The customer is reporting that all API requests are returning 500 Internal Server Errors despite no changes to their configuration.\"}",
+        "parsed_output": {
+          "category": "technical",
+          "summary": "The customer is reporting that all API requests are returning 500 Internal Server Errors despite no changes to their configuration."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "technical",
+              "actual": "technical"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1571.105599985458,
+        "usage": {
+          "prompt_tokens": 390,
+          "completion_tokens": 35
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0006",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"technical\", \"summary\": \"The customer is reporting significant performance issues and slow loading times on the dashboard.\"}",
+        "parsed_output": {
+          "category": "technical",
+          "summary": "The customer is reporting significant performance issues and slow loading times on the dashboard."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "technical",
+              "actual": "technical"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1619.066199986264,
+        "usage": {
+          "prompt_tokens": 391,
+          "completion_tokens": 26
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0007",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"account\", \"summary\": \"The customer is unable to log in and needs assistance with the password reset process.\"}",
+        "parsed_output": {
+          "category": "account",
+          "summary": "The customer is unable to log in and needs assistance with the password reset process."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "account",
+              "actual": "account"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1413.963800005149,
+        "usage": {
+          "prompt_tokens": 386,
+          "completion_tokens": 27
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0011",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"general\", \"summary\": \"The customer is suggesting the addition of a dark mode feature to improve usability at night.\"}",
+        "parsed_output": {
+          "category": "general",
+          "summary": "The customer is suggesting the addition of a dark mode feature to improve usability at night."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "general",
+              "actual": "general"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1536.9193000369705,
+        "usage": {
+          "prompt_tokens": 385,
+          "completion_tokens": 28
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0012",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"general\", \"summary\": \"Henry Walker is inquiring about a potential business partnership and requesting a meeting to discuss collaboration.\"}",
+        "parsed_output": {
+          "category": "general",
+          "summary": "Henry Walker is inquiring about a potential business partnership and requesting a meeting to discuss collaboration."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "general",
+              "actual": "general"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1779.2646999587305,
+        "usage": {
+          "prompt_tokens": 388,
+          "completion_tokens": 28
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0013",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"billing\", \"summary\": \"The customer is inquiring about an unexpected increase in their monthly subscription price and requesting a price restoration.\"}",
+        "parsed_output": {
+          "category": "billing",
+          "summary": "The customer is inquiring about an unexpected increase in their monthly subscription price and requesting a price restoration."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "billing",
+              "actual": "billing"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1422.2355000092648,
+        "usage": {
+          "prompt_tokens": 395,
+          "completion_tokens": 30
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0015",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"billing\", \"summary\": \"The customer needs to know where to update their expired bank card details for upcoming payments.\"}",
+        "parsed_output": {
+          "category": "billing",
+          "summary": "The customer needs to know where to update their expired bank card details for upcoming payments."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "billing",
+              "actual": "billing"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1573.9993000170216,
+        "usage": {
+          "prompt_tokens": 364,
+          "completion_tokens": 28
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0017",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"technical\", \"summary\": \"The customer is experiencing a recurring issue where their calendar integration disconnects shortly after being set up.\"}",
+        "parsed_output": {
+          "category": "technical",
+          "summary": "The customer is experiencing a recurring issue where their calendar integration disconnects shortly after being set up."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "technical",
+              "actual": "technical"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1540.0347000104375,
+        "usage": {
+          "prompt_tokens": 367,
+          "completion_tokens": 30
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0019",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"account\", \"summary\": \"The customer needs a new account verification link because the previous one expired during registration.\"}",
+        "parsed_output": {
+          "category": "account",
+          "summary": "The customer needs a new account verification link because the previous one expired during registration."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "account",
+              "actual": "account"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1641.1374000017531,
+        "usage": {
+          "prompt_tokens": 384,
+          "completion_tokens": 27
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0021",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"account\", \"summary\": \"The customer is requesting the permanent deletion of their entire account and all associated profile information.\"}",
+        "parsed_output": {
+          "category": "account",
+          "summary": "The customer is requesting the permanent deletion of their entire account and all associated profile information."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "account",
+              "actual": "account"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1439.1273999935947,
+        "usage": {
+          "prompt_tokens": 380,
+          "completion_tokens": 28
+        },
+        "cached": true,
+        "error": null
+      },
+      {
+        "case_id": "email-0023",
+        "sample_idx": 0,
+        "raw_output": "{\"category\": \"general\", \"summary\": \"A customer is suggesting a new feature to allow for automated weekly report scheduling.\"}",
+        "parsed_output": {
+          "category": "general",
+          "summary": "A customer is suggesting a new feature to allow for automated weekly report scheduling."
+        },
+        "scores": [
+          {
+            "name": "schema_valid",
+            "value": 1.0,
+            "passed": true,
+            "detail": {}
+          },
+          {
+            "name": "label_exact",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "expected": "general",
+              "actual": "general"
+            }
+          }
+        ],
+        "passed": true,
+        "latency_ms": 1387.4598999973387,
+        "usage": {
+          "prompt_tokens": 389,
+          "completion_tokens": 26
+        },
+        "cached": true,
+        "error": null
+      }
+    ],
+    "aggregates": {
+      "error_rate": {
+        "value": 0.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "pass_rate": {
+        "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "schema_valid": {
+        "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "label_exact": {
+        "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "label_exact/account": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "label_exact/billing": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "label_exact/general": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "label_exact/technical": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "schema_valid/account": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "schema_valid/billing": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "schema_valid/general": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "schema_valid/technical": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "tokens_prompt_mean": {
+        "value": 383.25,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "tokens_completion_mean": {
+        "value": 28.25,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "tokens_total": {
+        "value": 4938.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      }
+    },
+    "error": null
+  }
+}

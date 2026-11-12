@@ -81,6 +81,13 @@ async def _run_case(
     )
 
 
+def _case_labels(plan: RunPlan) -> dict[str, str]:
+    field = plan.spec.label_field
+    if field is None:
+        return {}
+    return {c.id: str(c.expected[field]) for c in plan.cases if field in c.expected}
+
+
 async def execute_run(
     plan: RunPlan,
     executor: Executor,
@@ -132,6 +139,8 @@ async def execute_run(
         params=plan.prompt.model.model_dump(mode="json", exclude={"model"}),
         selection=plan.selection,
         n_samples=plan.n_samples,
+        case_labels=_case_labels(plan),
+        critical_case_ids=tuple(c.id for c in plan.cases if c.critical),
         execution=ExecutionStats(
             cache_mode=cache_mode,
             cache_hits=executor.cache_hits,

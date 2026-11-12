@@ -1,6 +1,7 @@
 """Command-line entrypoint. Thin shell: parse args, call services, format output, set exit code.
 
-Exit codes: 0 ok, 1 output failed schema validation, 2 usage/config error, 3 provider error.
+Exit codes: 0 ok (PASS, or WARN without --fail-on-warn), 1 output failed schema validation,
+2 usage/config error, 3 provider error (run status ERROR), 4 regression gate failed.
 """
 
 import asyncio
@@ -14,15 +15,30 @@ from regguard import __version__
 from regguard.apps.config import AppConfig, load_app_config
 from regguard.apps.registry import get_app
 from regguard.core.config import load_settings
-from regguard.core.errors import ConfigError, DataValidationError, ProviderError
+from regguard.core.errors import ComparisonError, ConfigError, DataValidationError, ProviderError
 from regguard.core.logging import configure_logging
-from regguard.core.types import CaseResult, RunResult, RunStatus
+from regguard.core.types import (
+    CaseChange,
+    CaseResult,
+    Comparison,
+    MetricDelta,
+    RunResult,
+    RunStatus,
+    Severity,
+    ThresholdLevel,
+    Verdict,
+)
 from regguard.datasets.lint import dataset_stats, lint_dataset
 from regguard.datasets.loader import list_versions
 from regguard.datasets.models import Dataset
 from regguard.evaluation.cache import CacheMode
 from regguard.prompts.loader import discover_prompts, load_prompt_version
 from regguard.providers.factory import build_provider
+from regguard.services.compare_service import (
+    compare_with_baseline,
+    ensure_baseline_exists,
+    promote_baseline,
+)
 from regguard.services.datasets import load_app_dataset
 from regguard.services.invoke import InvokeResult, invoke_once
 from regguard.services.run_service import (
@@ -33,12 +49,14 @@ from regguard.services.run_service import (
     git_sha,
     prepare_run,
 )
+from regguard.storage.baseline_store import list_baselines, load_baseline
 from regguard.storage.file_store import list_runs, load_run
 
 EXIT_SCHEMA_INVALID = 1
 EXIT_VALIDATION_FAILED = 1
 EXIT_CONFIG_ERROR = 2
 EXIT_PROVIDER_ERROR = 3
+EXIT_GATE_FAILED = 4
 
 app = typer.Typer(
     name="regguard",
@@ -52,6 +70,8 @@ dataset_app = typer.Typer(help="Validate and inspect golden datasets.", no_args_
 app.add_typer(dataset_app, name="dataset")
 runs_app = typer.Typer(help="Inspect stored evaluation runs.", no_args_is_help=True)
 app.add_typer(runs_app, name="runs")
+baseline_app = typer.Typer(help="Pin and inspect baselines.", no_args_is_help=True)
+app.add_typer(baseline_app, name="baseline")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", "-c", help="Path to the app's regguard.yaml.")
@@ -305,6 +325,18 @@ def _print_summary(result: RunResult) -> None:
         typer.echo(f"  {'tokens_total':<24} {agg['tokens_total'].value:>7.0f}")
 
 
+FailOnWarnOption = Annotated[
+    bool, typer.Option("--fail-on-warn", help="Exit with code 4 on WARN too, not only on FAIL.")
+]
+AllowDatasetChangeOption = Annotated[
+    bool,
+    typer.Option(
+        "--allow-dataset-change",
+        help="Compare even if the dataset changed (shared cases only, with a warning).",
+    ),
+]
+
+
 @app.command("run")
 def run(
     prompt: Annotated[str, typer.Option("--prompt", "-p", help="Prompt version, e.g. v1.")],
@@ -322,6 +354,11 @@ def run(
     max_requests: Annotated[
         int, typer.Option(help="Refuse runs needing more API calls than this.")
     ] = 50,
+    baseline: Annotated[
+        str | None, typer.Option("--baseline", "-b", help="Compare with this baseline afterwards.")
+    ] = None,
+    fail_on_warn: FailOnWarnOption = False,
+    allow_dataset_change: AllowDatasetChangeOption = False,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Evaluate a prompt version against the golden dataset and save the result."""
@@ -350,6 +387,8 @@ def run(
             f"{plan.total_calls - prepared.uncached_calls} cached. Model: {plan.model}"
         )
         check_budget(prepared)
+        if baseline is not None:
+            ensure_baseline_exists(cfg, baseline)  # fail before spending any API call
     except (ConfigError, DataValidationError, BudgetExceededError) as exc:
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
 
@@ -371,7 +410,20 @@ def run(
     _print_summary(result)
     typer.echo(f"\nSaved: {settings.runs_dir / result.meta.run_id / 'result.json'}")
     if result.status is RunStatus.ERROR:
+        if baseline is not None:
+            typer.secho("Comparison skipped: the run itself failed.", fg=typer.colors.RED)
         raise typer.Exit(EXIT_PROVIDER_ERROR)
+    if baseline is not None:
+        _compare_and_exit(
+            cfg,
+            settings.runs_dir,
+            result,
+            baseline_name=baseline,
+            against_run=None,
+            allow_dataset_change=allow_dataset_change,
+            fail_on_warn=fail_on_warn,
+            show_all=False,
+        )
 
 
 @runs_app.command("list")
@@ -411,3 +463,201 @@ def runs_show(
             detail = c.error.message if c.error else (c.raw_output or "")
             typer.echo(f"      {detail[:300]}")
     _print_summary(result)
+
+
+# --- baselines and comparison ------------------------------------------------------------
+
+_VERDICT_COLORS = {
+    Verdict.PASS: typer.colors.GREEN,
+    Verdict.WARN: typer.colors.YELLOW,
+    Verdict.FAIL: typer.colors.RED,
+    Verdict.ERROR: typer.colors.RED,
+}
+_SEVERITY_COLORS = {
+    Severity.FAIL: typer.colors.RED,
+    Severity.WARN: typer.colors.YELLOW,
+    Severity.INFO: None,
+}
+
+
+def _metric_row(m: MetricDelta) -> str:
+    is_rate = m.regressed is not None
+    if is_rate:
+        base, cand = _pct(m.baseline), _pct(m.candidate)
+    else:
+        base, cand = f"{m.baseline:.0f}", f"{m.candidate:.0f}"
+    if m.delta is None:
+        delta = "n/a"
+    elif m.unit == "absolute":
+        delta = f"{m.delta * 100:+.1f} pts"
+    else:
+        delta = f"{m.delta * 100:+.0f}%"
+    flips = f"{m.regressed}/{m.improved}" if is_rate else "-"
+    p_value = f"{m.p_value:.3f}" if m.p_value is not None else "-"
+    level = "" if m.level is ThresholdLevel.OK else m.level.value.upper()
+    if level and not m.gating:
+        level += " (info)"
+    cells = f"{base:>8} {cand:>9} {delta:>10} {flips:>7} {p_value:>7} {m.n:>4}"
+    return f"  {m.metric:<24} {cells}  {level}"
+
+
+def _print_comparison(c: Comparison, *, show_all: bool) -> None:
+    against = f"baseline '{c.baseline_name}'" if c.baseline_name else "run"
+    typer.echo(f"\nComparison: {c.candidate_run_id} vs {against} ({c.baseline_run_id})")
+    for r in c.reasons:
+        color = _SEVERITY_COLORS[r.severity]
+        typer.secho(f"  {r.severity.value.upper():<5} {r.code:<24} {r.message}", fg=color)
+    if c.metrics:
+        typer.echo(
+            f"\n  {'metric':<24} {'baseline':>8} {'candidate':>9} {'delta':>10} {'-/+':>7} "
+            f"{'p':>7} {'n':>4}  level"
+        )
+        for m in c.metrics:
+            typer.echo(_metric_row(m))
+    if c.counts:
+        summary = ", ".join(f"{n} {k.replace('_', ' ')}" for k, n in sorted(c.counts.items()))
+        typer.echo(f"\n  cases: {summary}")
+    for d in c.cases:
+        interesting = d.change in (CaseChange.REGRESSED, CaseChange.IMPROVED, CaseChange.SKIPPED)
+        if not (show_all or interesting):
+            continue
+        failing = ", ".join(d.candidate_failed_metrics) or "-"
+        flag = "  [CRITICAL CASE]" if d.critical else ""
+        typer.echo(
+            f"  {d.change.value.upper():<10} {d.case_id:<14} {d.label or '':<10} "
+            f"now failing: {failing}{flag}"
+        )
+    typer.secho(f"\nVERDICT: {c.verdict.value.upper()}", fg=_VERDICT_COLORS[c.verdict], bold=True)
+
+
+def _compare_and_exit(
+    cfg: AppConfig,
+    runs_dir: Path,
+    candidate: RunResult,
+    *,
+    baseline_name: str | None,
+    against_run: str | None,
+    allow_dataset_change: bool,
+    fail_on_warn: bool,
+    show_all: bool,
+) -> None:
+    try:
+        comparison, path = compare_with_baseline(
+            cfg,
+            runs_dir,
+            candidate,
+            baseline_name=baseline_name,
+            against_run=against_run,
+            allow_dataset_change=allow_dataset_change,
+        )
+    except (ComparisonError, DataValidationError) as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    _print_comparison(comparison, show_all=show_all)
+    typer.echo(f"Saved: {path}")
+    if comparison.verdict is Verdict.ERROR:
+        raise typer.Exit(EXIT_PROVIDER_ERROR)
+    if comparison.verdict is Verdict.FAIL or (fail_on_warn and comparison.verdict is Verdict.WARN):
+        raise typer.Exit(EXIT_GATE_FAILED)
+
+
+@app.command("compare")
+def compare_cmd(
+    candidate: Annotated[str, typer.Argument(help="Candidate run id or unique prefix.")],
+    baseline: Annotated[
+        str, typer.Option("--baseline", "-b", help="Baseline name to compare against.")
+    ] = "main",
+    against: Annotated[
+        str | None, typer.Option("--against", help="Compare with this run id instead.")
+    ] = None,
+    fail_on_warn: FailOnWarnOption = False,
+    allow_dataset_change: AllowDatasetChangeOption = False,
+    all_cases: Annotated[bool, typer.Option("--all", help="List unchanged cases too.")] = False,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Compare a stored run with a baseline and print the PASS / WARN / FAIL verdict."""
+    settings = load_settings()
+    cfg = _load_config(config)
+    try:
+        result = load_run(settings.runs_dir, candidate)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    _compare_and_exit(
+        cfg,
+        settings.runs_dir,
+        result,
+        baseline_name=baseline,
+        against_run=against,
+        allow_dataset_change=allow_dataset_change,
+        fail_on_warn=fail_on_warn,
+        show_all=all_cases,
+    )
+
+
+@baseline_app.command("promote")
+def baseline_promote(
+    run_id: Annotated[str, typer.Argument(help="Run id or unique prefix to pin.")],
+    name: Annotated[str, typer.Option("--name", "-n", help="Baseline name.")] = "main",
+    replace: Annotated[bool, typer.Option(help="Overwrite an existing baseline.")] = False,
+    note: Annotated[str, typer.Option(help="Why this run is trusted.")] = "",
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Pin a completed run as a baseline file (commit it so CI can compare against it)."""
+    settings = load_settings()
+    cfg = _load_config(config)
+    try:
+        baseline, path = promote_baseline(
+            cfg,
+            settings.runs_dir,
+            run_id,
+            name=name,
+            replace=replace,
+            note=note,
+            git_revision=git_sha(cfg.prompts_dir),
+        )
+    except (ComparisonError, DataValidationError) as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    m = baseline.run.meta
+    typer.secho(f"Baseline '{name}' <- run {m.run_id}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"  prompt {m.prompt_version}, dataset {m.dataset_version}, {len(baseline.run.cases)} cases"
+    )
+    typer.echo(f"Saved: {path}\nCommit this file so CI compares against it.")
+
+
+@baseline_app.command("list")
+def baseline_list(config: ConfigOption = Path("regguard.yaml")) -> None:
+    """List baselines for this app."""
+    cfg = _load_config(config)
+    try:
+        baselines = list_baselines(cfg.baselines_dir)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    if not baselines:
+        typer.echo(f"No baselines in {cfg.baselines_dir}")
+        return
+    for b in baselines:
+        h, m = b.header, b.run.meta
+        typer.echo(
+            f"{h.name:<12} run {h.source_run_id:<24} prompt {m.prompt_version:<6} "
+            f"dataset {m.dataset_version:<6} {len(b.run.cases):>4} cases  "
+            f"promoted {h.promoted_at:%Y-%m-%d %H:%M}"
+        )
+
+
+@baseline_app.command("show")
+def baseline_show(
+    name: Annotated[str, typer.Argument(help="Baseline name.")] = "main",
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Show a baseline's provenance and scores."""
+    cfg = _load_config(config)
+    try:
+        b = load_baseline(cfg.baselines_dir, name)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    h = b.header
+    typer.echo(f"Baseline '{h.name}' (promoted {h.promoted_at:%Y-%m-%d %H:%M} UTC)")
+    typer.echo(f"  source run {h.source_run_id}   git {h.git_sha or '-'}")
+    if h.note:
+        typer.echo(f"  note: {h.note}")
+    _print_summary(b.run)

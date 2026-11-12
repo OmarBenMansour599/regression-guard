@@ -1,7 +1,7 @@
 """``regguard.yaml``: binds an application spec to its prompt and dataset directories.
 
 Relative paths are resolved against the directory containing the YAML file.
-Metrics and thresholds are added to this file in Phase 5.
+The optional ``gate:`` block sets comparison thresholds (see ``core/gating.py``).
 """
 
 from pathlib import Path
@@ -10,6 +10,7 @@ import yaml
 from pydantic import Field, ValidationError
 
 from regguard.core.errors import ConfigError
+from regguard.core.gating import GateConfig
 from regguard.core.types import FrozenModel
 
 
@@ -23,7 +24,9 @@ class AppConfig(FrozenModel):
     app: str  # registered AppSpec name
     prompts_dir: Path
     datasets_dir: Path | None = None
+    baselines_dir: Path = Path("baselines")
     judge: JudgeConfig | None = None
+    gate: GateConfig = Field(default_factory=GateConfig)
 
 
 def load_app_config(path: Path) -> AppConfig:
@@ -42,5 +45,6 @@ def load_app_config(path: Path) -> AppConfig:
         update={
             "prompts_dir": (base / config.prompts_dir).resolve(),
             "datasets_dir": (base / config.datasets_dir).resolve() if config.datasets_dir else None,
+            "baselines_dir": (base / config.baselines_dir).resolve(),
         }
     )

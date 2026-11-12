@@ -75,7 +75,7 @@ type = "layers"
 layers = [
     "regguard.cli",
     "regguard.services",
-    "regguard.evaluation",
+    "regguard.evaluation | regguard.comparison",
     "regguard.metrics",
     "regguard.apps",
     "regguard.prompts | regguard.datasets | regguard.storage",
