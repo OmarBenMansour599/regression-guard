@@ -30,6 +30,10 @@ class RetryPolicy:
     max_retries: int = 4
     base_delay_s: float = 1.0
     max_delay_s: float = 30.0
+    # 429s without Retry-After (e.g. a throttled shared upstream pool) last much longer than
+    # transient 5xx errors: wait longer, with a guaranteed minimum (equal jitter).
+    rate_limit_base_delay_s: float = 5.0
+    rate_limit_max_delay_s: float = 60.0
     abort_after_consecutive_failures: int = 5
 
 
@@ -100,9 +104,16 @@ class Executor:
         self.retries = 0
         self.served_models: set[str] = set()  # model ids the provider says it used
 
-    def _backoff(self, attempt: int) -> float:
-        """Full jitter: uniform(0, min(cap, base * 2**attempt))."""
-        ceiling = min(self._policy.max_delay_s, self._policy.base_delay_s * 2**attempt)
+    def _backoff(self, attempt: int, *, rate_limited: bool) -> float:
+        """Transient errors: full jitter in [0, ceiling].
+        Rate limits: equal jitter in [ceiling/2, ceiling], so we never retry almost instantly.
+        """
+        p = self._policy
+        factor = float(1 << attempt)  # 2**attempt as an exact int, attempt >= 0
+        if rate_limited:
+            ceiling = min(p.rate_limit_max_delay_s, p.rate_limit_base_delay_s * factor)
+            return ceiling / 2 + self._rng.uniform(0, ceiling / 2)
+        ceiling = min(p.max_delay_s, p.base_delay_s * factor)
         return self._rng.uniform(0, ceiling)
 
     def _abort(self, reason: str) -> None:
@@ -148,11 +159,15 @@ class Executor:
                     delay = (
                         min(exc.retry_after_s, _MAX_RETRY_AFTER_S)
                         if exc.retry_after_s is not None
-                        else self._backoff(attempt - 1)
+                        else self._backoff(attempt - 1, rate_limited=exc.status_code == 429)
                     )
                     self.retries += 1
-                    _log.warning(
-                        "provider_retry", attempt=attempt, delay_s=round(delay, 2), error=str(exc)
+                    # Short line only: the full message is kept on the case if it finally fails.
+                    _log.info(
+                        "provider_retry",
+                        attempt=attempt,
+                        error=_error_type(exc),
+                        wait_s=round(delay, 1),
                     )
                     await self._sleep(delay)
                     continue

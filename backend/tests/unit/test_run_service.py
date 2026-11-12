@@ -96,6 +96,16 @@ async def test_execute_saves_and_second_run_is_free(tmp_path: Path) -> None:
     ]
 
 
+def test_empty_selection_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(DataValidationError, match="No cases match"):
+        prepare_run(
+            _config(tmp_path),
+            RunOptions(prompt_version="v1", tags=["no_such_tag"]),
+            _settings(tmp_path),
+            provider_name="mock",
+        )
+
+
 def test_unknown_prompt_version(tmp_path: Path) -> None:
     with pytest.raises(DataValidationError, match="v9"):
         prepare_run(

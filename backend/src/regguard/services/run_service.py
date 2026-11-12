@@ -8,7 +8,7 @@ from pathlib import Path
 from regguard.apps.config import AppConfig
 from regguard.apps.registry import get_app
 from regguard.core.config import Settings
-from regguard.core.errors import RegGuardError
+from regguard.core.errors import DataValidationError, RegGuardError
 from regguard.core.types import CaseSelection, RunResult, Trigger
 from regguard.datasets.select import select_cases
 from regguard.evaluation.cache import CacheMode, ResponseCache
@@ -75,6 +75,11 @@ def prepare_run(
         label_field=spec.label_field,
         seed=options.seed,
     )
+    if not cases:
+        raise DataValidationError(
+            f"No cases match the selection (tags={list(options.tags)}, ids={list(options.ids)}); "
+            "refusing to run an empty evaluation"
+        )
     plan = RunPlan(
         app_name=config.name,
         spec=spec,

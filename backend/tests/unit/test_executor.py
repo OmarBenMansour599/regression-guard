@@ -85,6 +85,16 @@ async def test_retries_then_succeeds(tmp_path: Path) -> None:
     assert all(0 <= d <= 2.0 for d in t.sleeps)  # full jitter within 1s, 2s ceilings
 
 
+async def test_rate_limit_backoff_is_long_with_minimum(tmp_path: Path) -> None:
+    provider = scripted(retryable(429), retryable(429), retryable(429), retryable(429), "ok")
+    executor, t = make_executor(provider, tmp_path, policy=RetryPolicy(max_retries=4))
+    outcome = await executor.call(REQUEST)
+    assert outcome.completion is not None
+    # equal jitter on 5s base, 60s cap: [2.5,5], [5,10], [10,20], [20,40]
+    for delay, (low, high) in zip(t.sleeps, [(2.5, 5), (5, 10), (10, 20), (20, 40)], strict=True):
+        assert low <= delay <= high
+
+
 async def test_retry_after_is_honored(tmp_path: Path) -> None:
     executor, t = make_executor(scripted(retryable(429, retry_after=7.0), "ok"), tmp_path)
     await executor.call(REQUEST)
