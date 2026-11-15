@@ -12,6 +12,7 @@ from regguard.core.types import (
     CaseResult,
     CaseSelection,
     ExecutionStats,
+    JudgeResult,
     RunMeta,
     RunResult,
     RunStatus,
@@ -19,8 +20,10 @@ from regguard.core.types import (
 )
 from regguard.datasets.models import Dataset, GoldenCase
 from regguard.evaluation.executor import Executor
+from regguard.evaluation.judge import JudgeScorer
 from regguard.metrics.aggregate import compute_aggregates
 from regguard.metrics.base import Metric, ScoringInput
+from regguard.metrics.judge import JudgeOutput, judge_metric_score
 from regguard.prompts.models import PromptConfig
 from regguard.prompts.render import build_request
 
@@ -49,7 +52,11 @@ class RunPlan:
 
 
 async def _run_case(
-    plan: RunPlan, executor: Executor, case: GoldenCase, sample_idx: int
+    plan: RunPlan,
+    executor: Executor,
+    case: GoldenCase,
+    sample_idx: int,
+    judge: JudgeScorer | None = None,
 ) -> CaseResult:
     request = build_request(plan.prompt, case.input, model_override=plan.model_override)
     outcome = await executor.call(request, sample_idx=sample_idx)
@@ -65,10 +72,17 @@ async def _run_case(
         output, parse_error = None, str(exc)
 
     item = ScoringInput(case=case, output=output, parse_error=parse_error)
-    scores = [m.score(item) for m in plan.metrics]
+    scores = [s for m in plan.metrics if (s := m.score(item)) is not None]
     gating = {m.name for m in plan.metrics if m.gating}
-    passed = all(s.passed for s in scores if s.name in gating)
+    passed = all(s.passed for s in scores if s.name in gating and s.passed is not None)
+
+    judged: JudgeResult | None = None
+    if judge is not None and output is not None:
+        judged = await judge.score(case, output, sample_idx=sample_idx)
+        if judged is not None and judged.score is not None:
+            scores.append(judge_metric_score(JudgeOutput(score=judged.score, reason=judged.reason)))
     return CaseResult(
+        judge=judged,
         case_id=case.id,
         sample_idx=sample_idx,
         raw_output=completion.text,
@@ -99,6 +113,7 @@ async def execute_run(
     git_sha: str | None = None,
     trigger: Trigger = Trigger.MANUAL,
     on_progress: ProgressCallback | None = None,
+    judge: JudgeScorer | None = None,
 ) -> RunResult:
     started_at = datetime.now(UTC)
     total = plan.total_calls
@@ -106,7 +121,7 @@ async def execute_run(
 
     async def tracked(case: GoldenCase, sample_idx: int) -> CaseResult:
         nonlocal done
-        result = await _run_case(plan, executor, case, sample_idx)
+        result = await _run_case(plan, executor, case, sample_idx, judge)
         done += 1
         if on_progress is not None:
             on_progress(done, total)
@@ -124,6 +139,13 @@ async def execute_run(
     elif error_rate > max_error_rate:
         status = RunStatus.ERROR
         error = f"error rate {error_rate:.0%} exceeds the {max_error_rate:.0%} limit"
+    elif judge is not None and judge.executor.aborted_reason is not None:
+        status, error = RunStatus.ERROR, f"judge aborted: {judge.executor.aborted_reason}"
+    elif (judge_errors := aggregates.get("judge_error_rate")) is not None and (
+        judge_errors.value > max_error_rate
+    ):
+        status = RunStatus.ERROR
+        error = f"judge error rate {judge_errors.value:.0%} exceeds the {max_error_rate:.0%} limit"
 
     meta = RunMeta(
         run_id=run_id,
@@ -146,7 +168,11 @@ async def execute_run(
             cache_hits=executor.cache_hits,
             api_calls=executor.api_calls,
             retries=executor.retries,
+            judge_cache_hits=judge.executor.cache_hits if judge else 0,
+            judge_api_calls=judge.executor.api_calls if judge else 0,
+            judge_retries=judge.executor.retries if judge else 0,
         ),
+        judge=judge.describe() if judge else None,
         git_sha=git_sha,
         trigger=trigger,
         started_at=started_at,

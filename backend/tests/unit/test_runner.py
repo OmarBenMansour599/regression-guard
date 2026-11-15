@@ -1,6 +1,8 @@
 import random
 from pathlib import Path
 
+import pytest
+
 from regguard.apps.support_email import SPEC
 from regguard.core.errors import ProviderError
 from regguard.core.types import CaseSelection, RunStatus
@@ -43,9 +45,9 @@ def responder(request: CompletionRequest) -> str | Exception:
     if "correct-billing" in text:
         return '{"category": "billing", "summary": "Customer asks about a charge."}'
     if "correct-technical" in text:
-        return '{"category": "technical", "summary": "Customer reports a bug."}'
+        return '{"category": "technical", "summary": "Customer reports a bug in the app."}'
     if "wrong-label" in text:
-        return '{"category": "billing", "summary": "Customer asks something."}'
+        return '{"category": "billing", "summary": "Customer asks something about the account."}'
     if "invalid-json" in text:
         return "Sorry, I cannot help with that."
     return ProviderError("down", retryable=False, status_code=400)
@@ -95,11 +97,19 @@ async def test_case_outcomes(tmp_path: Path) -> None:
     assert not by_id["c3"].passed
     assert by_id["c3"].parsed_output == {
         "category": "billing",
-        "summary": "Customer asks something.",
+        "summary": "Customer asks something about the account.",
     }
     assert not by_id["c4"].passed
     assert by_id["c4"].parsed_output is None
     assert by_id["c4"].raw_output == "Sorry, I cannot help with that."
+    # Invalid output: only schema_valid applies; label/summary metrics are not applicable.
+    assert [s.name for s in by_id["c4"].scores] == ["schema_valid"]
+    assert {s.name for s in by_id["c1"].scores} == {
+        "schema_valid",
+        "label_exact",
+        "summary_format",
+        "summary_similarity",
+    }
     assert by_id["c5"].error is not None
     assert by_id["c5"].scores == []
 
@@ -110,9 +120,16 @@ async def test_aggregates_exclude_errored_cases(tmp_path: Path) -> None:
     assert agg["pass_rate"].n == 4  # c5 errored: excluded from quality
     assert agg["pass_rate"].value == 0.5
     assert agg["schema_valid"].value == 0.75
-    assert agg["label_exact"].value == 0.5
+    assert agg["label_exact"].n == 3  # c4 (invalid JSON) is not a classification error
+    assert agg["label_exact"].value == pytest.approx(2 / 3)
     assert agg["label_exact/billing"].value == 1.0
     assert agg["label_exact/account"].value == 0.0
+    assert "label_exact/general" not in agg  # c4 invalid, c5 errored
+    assert agg["precision/billing"].value == 0.5  # c1 correct, c3 predicted billing wrongly
+    assert agg["f1/technical"].value == 1.0
+    assert agg["macro_f1"].value == pytest.approx((2 / 3 + 1.0 + 0.0) / 3)
+    assert agg["summary_format"].value == 1.0
+    assert 0.0 <= agg["summary_similarity"].value <= 1.0
     assert "latency_ms_p50" in agg
     assert agg["tokens_total"].value > 0
 

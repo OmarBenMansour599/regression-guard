@@ -6,11 +6,14 @@ prompts_dir: prompts/classify
 datasets_dir: datasets/emails
 baselines_dir: baselines # pinned baselines (change only via `regguard baseline promote`)
 
-# LLM-as-judge for summary quality (Phase 5b). Deliberately a different model family
-# from the classifier to reduce self-preference bias.
+# LLM-as-judge for summary quality: a second model grades each summary 1-5.
+# The judge prompt is versioned like any prompt; its model and parameters are in that file
+# (a different model family from the classifier, to reduce self-preference bias).
+# Skip it for one run with `regguard run --no-judge`.
 judge:
-  model: nvidia/nemotron-3.5-super-vl:free
-  temperature: 0.0
+  prompts_dir: prompts/judge
+  version: v1
+  enabled: true
 
 # Regression gate (ADR 0003). Deltas are candidate - baseline.
 # Negative threshold = a drop is bad; positive = a rise is bad.
@@ -24,6 +27,13 @@ gate:
   metrics:
     label_exact: { warn: -0.03, critical: -0.08, unit: absolute }
     schema_valid: { warn: -0.01, critical: -0.02, unit: absolute }
-    "label_exact/*": { warn: -0.05, critical: -0.12, unit: absolute } # per category
+    "label_exact/*": { warn: -0.05, critical: -0.12, unit: absolute } # per category (= recall)
+    summary_format: { warn: -0.03, critical: -0.08, unit: absolute } # one sentence, 5-40 words
+    # Word overlap with the reference: weak signal (wording differs), report only.
+    summary_similarity: { warn: -0.10, unit: relative, gating: false, epsilon: 0.10 }
+    # Judge score (mean, 1-5). A case "regresses" when it drops by a full point.
+    # Report only until we have checked the judge against our own reading (calibration).
+    summary_judge: { warn: -0.05, critical: -0.10, unit: relative, gating: false, epsilon: 0.5 }
+    macro_f1: { warn: -0.03, critical: -0.08, unit: absolute, gating: false } # report only
     latency_ms_p95: { warn: 0.25, unit: relative, gating: false } # free tier is noisy
     tokens_per_case: { warn: 0.20, critical: 0.50, unit: relative }

@@ -15,8 +15,11 @@ from regguard.core.types import FrozenModel
 
 
 class JudgeConfig(FrozenModel):
-    model: str
-    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    """LLM judge for the summary. Its model and parameters live in the versioned judge prompt."""
+
+    prompts_dir: Path
+    version: str = "v1"
+    enabled: bool = True
 
 
 class AppConfig(FrozenModel):
@@ -41,8 +44,12 @@ def load_app_config(path: Path) -> AppConfig:
     except ValidationError as exc:
         raise ConfigError(f"Invalid app config {path}:\n{exc}") from exc
     base = path.parent.resolve()
+    judge = config.judge
+    if judge is not None:
+        judge = judge.model_copy(update={"prompts_dir": (base / judge.prompts_dir).resolve()})
     return config.model_copy(
         update={
+            "judge": judge,
             "prompts_dir": (base / config.prompts_dir).resolve(),
             "datasets_dir": (base / config.datasets_dir).resolve() if config.datasets_dir else None,
             "baselines_dir": (base / config.baselines_dir).resolve(),

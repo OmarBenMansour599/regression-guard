@@ -19,7 +19,14 @@ CATEGORIES = ("billing", "technical", "account", "general")
 # Outcome codes: "pass", "label" (wrong category), "schema" (invalid output), "error" (infra).
 
 
-def make_case(case_id: str, outcome: str, *, sample_idx: int = 0, tokens: int = 100) -> CaseResult:
+def make_case(
+    case_id: str,
+    outcome: str,
+    *,
+    sample_idx: int = 0,
+    tokens: int = 100,
+    similarity: float | None = None,
+) -> CaseResult:
     if outcome == "error":
         return CaseResult(
             case_id=case_id,
@@ -29,15 +36,17 @@ def make_case(case_id: str, outcome: str, *, sample_idx: int = 0, tokens: int = 
         )
     schema_ok = outcome != "schema"
     label_ok = outcome == "pass"
+    scores = [MetricScore(name="schema_valid", value=float(schema_ok), passed=schema_ok)]
+    if schema_ok:  # label and summary metrics do not apply to invalid outputs
+        scores.append(MetricScore(name="label_exact", value=float(label_ok), passed=label_ok))
+        if similarity is not None:
+            scores.append(MetricScore(name="summary_similarity", value=similarity, passed=None))
     return CaseResult(
         case_id=case_id,
         sample_idx=sample_idx,
         raw_output="{}",
         parsed_output={"category": "billing"} if schema_ok else None,
-        scores=[
-            MetricScore(name="schema_valid", value=float(schema_ok), passed=schema_ok),
-            MetricScore(name="label_exact", value=float(label_ok), passed=label_ok),
-        ],
+        scores=scores,
         passed=schema_ok and label_ok,
         latency_ms=1000.0,
         usage=Usage(prompt_tokens=tokens - 20, completion_tokens=20),
@@ -62,8 +71,12 @@ def make_run(
     tokens: int = 100,
     latency_p95: float | None = 1000.0,
     labels: Mapping[str, str] | None = None,
+    similarity: Mapping[str, float] | None = None,
 ) -> RunResult:
-    results = [make_case(cid, outcome, tokens=tokens) for cid, outcome in cases.items()]
+    results = [
+        make_case(cid, outcome, tokens=tokens, similarity=(similarity or {}).get(cid))
+        for cid, outcome in cases.items()
+    ]
     ok = [r for r in results if r.error is None]
     schema = [float(r.parsed_output is not None) for r in ok]
     aggregates = {

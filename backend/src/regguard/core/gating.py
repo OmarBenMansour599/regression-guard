@@ -21,6 +21,7 @@ class MetricThreshold(FrozenModel):
     critical: float | None = None
     unit: Literal["absolute", "relative"] = "absolute"
     gating: bool = True  # False: crossings are reported as info and never change the verdict
+    epsilon: float = Field(default=0.0, ge=0.0)  # continuous metrics: per-case move that counts
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -43,6 +44,14 @@ def default_metric_thresholds() -> dict[str, MetricThreshold]:
         "label_exact": MetricThreshold(warn=-0.03, critical=-0.08),
         "schema_valid": MetricThreshold(warn=-0.01, critical=-0.02),
         "label_exact/*": MetricThreshold(warn=-0.05, critical=-0.12),
+        "summary_format": MetricThreshold(warn=-0.03, critical=-0.08),
+        "summary_similarity": MetricThreshold(
+            warn=-0.10, unit="relative", gating=False, epsilon=0.10
+        ),
+        "summary_judge": MetricThreshold(
+            warn=-0.05, critical=-0.10, unit="relative", gating=False, epsilon=0.5
+        ),
+        "macro_f1": MetricThreshold(warn=-0.03, critical=-0.08, gating=False),
         "latency_ms_p95": MetricThreshold(warn=0.25, unit="relative", gating=False),
         "tokens_per_case": MetricThreshold(warn=0.20, critical=0.50, unit="relative"),
     }

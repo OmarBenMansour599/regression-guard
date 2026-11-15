@@ -22,6 +22,7 @@ from regguard.core.types import (
     CaseResult,
     Comparison,
     MetricDelta,
+    MetricKind,
     RunResult,
     RunStatus,
     Severity,
@@ -47,6 +48,8 @@ from regguard.services.run_service import (
     check_budget,
     execute_prepared,
     git_sha,
+    load_judge_prompt,
+    mock_responder,
     prepare_run,
 )
 from regguard.storage.baseline_store import list_baselines, load_baseline
@@ -280,9 +283,19 @@ def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
-def _case_row(r: CaseResult) -> str:
+def _judge_cell(r: CaseResult) -> str:
+    if r.judge is None:
+        return ""
+    if r.judge.score is None:
+        return "judge ERR"
+    return f"judge {r.judge.score}/5"
+
+
+def _case_row(r: CaseResult, labels: dict[str, str] | None = None) -> str:
     label = next((s for s in r.scores if s.name == "label_exact"), None)
-    expected = str(label.detail.get("expected", "")) if label else ""
+    expected = (labels or {}).get(r.case_id) or (
+        str(label.detail.get("expected", "")) if label else ""
+    )
     actual = str(label.detail.get("actual", "")) if label else ""
     if r.error is not None:
         verdict, actual = "ERROR", r.error.type
@@ -294,8 +307,9 @@ def _case_row(r: CaseResult) -> str:
     cached = "cached" if r.cached else ""
     sample = f"#{r.sample_idx}" if r.sample_idx else ""
     return (
-        f"  {r.case_id + sample:<16} {expected:<11} {actual:<14} {verdict:<8} {latency:>8} {cached}"
-    )
+        f"  {r.case_id + sample:<16} {expected:<11} {actual:<14} {verdict:<8} {latency:>8} "
+        f"{cached:<6} {_judge_cell(r)}"
+    ).rstrip()
 
 
 def _print_summary(result: RunResult) -> None:
@@ -312,12 +326,30 @@ def _print_summary(result: RunResult) -> None:
         f"  calls   {e.api_calls} api, {e.cache_hits} cached, {e.retries} retries"
         f"   (cache: {e.cache_mode})"
     )
+    if m.judge is not None:
+        typer.echo(
+            f"  judge   {e.judge_api_calls} api, {e.judge_cache_hits} cached, "
+            f"{e.judge_retries} retries   {m.judge.get('model')} "
+            f"(prompt {m.judge.get('prompt_version')})"
+        )
     typer.echo("")
-    for key in ("pass_rate", "schema_valid", "label_exact", "error_rate"):
+    for key in ("pass_rate", "schema_valid", "label_exact", "summary_format", "error_rate"):
         if key in agg:
             typer.echo(f"  {key:<24} {_pct(agg[key].value):>7}  (n={agg[key].n})")
     for key in sorted(k for k in agg if k.startswith("label_exact/")):
         typer.echo(f"  {key:<24} {_pct(agg[key].value):>7}  (n={agg[key].n})")
+    for key in ("macro_f1", "summary_similarity"):
+        if key in agg:
+            typer.echo(f"  {key:<24} {agg[key].value:>7.2f}  (n={agg[key].n})")
+    if "summary_judge" in agg:
+        judge = agg["summary_judge"]
+        typer.echo(f"  {'summary_judge':<24} {judge.value:>7.2f}  (n={judge.n}, scale 1-5)")
+    if "judge_error_rate" in agg and agg["judge_error_rate"].value > 0:
+        errors = agg["judge_error_rate"]
+        typer.secho(
+            f"  {'judge_error_rate':<24} {_pct(errors.value):>7}  (n={errors.n})",
+            fg=typer.colors.YELLOW,
+        )
     for key in ("latency_ms_p50", "latency_ms_p95"):
         if key in agg:
             typer.echo(f"  {key:<24} {agg[key].value:>7.0f}  (n={agg[key].n}, fresh calls)")
@@ -359,6 +391,9 @@ def run(
     ] = None,
     fail_on_warn: FailOnWarnOption = False,
     allow_dataset_change: AllowDatasetChangeOption = False,
+    judge: Annotated[
+        bool, typer.Option("--judge/--no-judge", help="Grade summaries with the LLM judge.")
+    ] = True,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Evaluate a prompt version against the golden dataset and save the result."""
@@ -372,20 +407,30 @@ def run(
         n_samples=samples,
         cache_mode=cache,
         max_requests=max_requests,
+        judge=judge,
     )
     try:
         settings = load_settings()
         configure_logging(settings.log_level, settings.log_format)
         cfg = load_app_config(config)
-        provider = build_provider(settings, mock_response=get_app(cfg.app).mock_response)
+        spec = get_app(cfg.app)
+        judge_prompt = load_judge_prompt(cfg, spec) if judge else None
+        provider = build_provider(settings, mock_response=mock_responder(spec, judge_prompt))
         prepared = prepare_run(cfg, options, settings, provider_name=provider.name)
         plan = prepared.plan
+        app_cached = plan.total_calls - (prepared.uncached_calls - prepared.uncached_judge_calls)
         typer.echo(
             f"Planned: {plan.prompt.id}@{plan.prompt.version} on "
             f"{plan.dataset.manifest.name}@{plan.dataset.manifest.version}: "
             f"{len(plan.cases)} case(s) x {plan.n_samples} sample(s) = {plan.total_calls} call(s), "
-            f"{plan.total_calls - prepared.uncached_calls} cached. Model: {plan.model}"
+            f"{app_cached} cached. Model: {plan.model}"
         )
+        if prepared.judge_prompt is not None:
+            typer.echo(
+                f"Judge:   up to {prepared.judge_calls} call(s), "
+                f"{prepared.judge_calls - prepared.uncached_judge_calls} cached. "
+                f"Model: {prepared.judge_prompt.model.model}"
+            )
         check_budget(prepared)
         if baseline is not None:
             ensure_baseline_exists(cfg, baseline)  # fail before spending any API call
@@ -406,7 +451,7 @@ def run(
     )
     typer.echo("")
     for case_result in result.cases:
-        typer.echo(_case_row(case_result))
+        typer.echo(_case_row(case_result, result.meta.case_labels))
     _print_summary(result)
     typer.echo(f"\nSaved: {settings.runs_dir / result.meta.run_id / 'result.json'}")
     if result.status is RunStatus.ERROR:
@@ -456,12 +501,21 @@ def runs_show(
         result = load_run(settings.runs_dir, run_id)
     except DataValidationError as exc:
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
-    shown = [c for c in result.cases if all_cases or not c.passed]
+
+    def low_judge(c: CaseResult) -> bool:
+        return c.judge is not None and (c.judge.score is None or c.judge.score <= 3)
+
+    shown = [c for c in result.cases if all_cases or not c.passed or low_judge(c)]
     for c in shown:
-        typer.echo(_case_row(c))
+        typer.echo(_case_row(c, result.meta.case_labels))
         if not c.passed:
             detail = c.error.message if c.error else (c.raw_output or "")
             typer.echo(f"      {detail[:300]}")
+        if c.judge is not None:
+            summary = (c.parsed_output or {}).get("summary", "")
+            note = c.judge.error.message if c.judge.error else c.judge.reason
+            typer.echo(f"      summary: {str(summary)[:200]}")
+            typer.echo(f"      judge:   {note[:300]}")
     _print_summary(result)
 
 
@@ -480,12 +534,16 @@ _SEVERITY_COLORS = {
 }
 
 
+def _fmt_metric_value(value: float, kind: MetricKind) -> str:
+    if kind is MetricKind.RATE:
+        return _pct(value)
+    return f"{value:.2f}" if abs(value) < 10 else f"{value:.0f}"
+
+
 def _metric_row(m: MetricDelta) -> str:
     is_rate = m.regressed is not None
-    if is_rate:
-        base, cand = _pct(m.baseline), _pct(m.candidate)
-    else:
-        base, cand = f"{m.baseline:.0f}", f"{m.candidate:.0f}"
+    base = _fmt_metric_value(m.baseline, m.kind)
+    cand = _fmt_metric_value(m.candidate, m.kind)
     if m.delta is None:
         delta = "n/a"
     elif m.unit == "absolute":

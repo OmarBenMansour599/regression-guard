@@ -16,18 +16,19 @@ from regguard.core.types import CaseChange, CaseDiff, CaseResult, RunResult
 class CaseOutcome:
     passed: bool | None  # None: errored in at least one sample -> skipped
     metrics: dict[str, bool] = field(default_factory=dict)  # binary metric -> passed
+    values: dict[str, float] = field(default_factory=dict)  # continuous metric -> mean value
     tokens: float | None = None  # mean total tokens per sample
 
 
 @dataclass(frozen=True)
-class PairedRate:
-    """A binary metric measured on the same cases in both runs."""
+class Paired:
+    """A metric measured on the same cases in both runs (rate for binary, mean for values)."""
 
     baseline: float
     candidate: float
     n: int
-    regressed: int  # pass -> fail
-    improved: int  # fail -> pass
+    regressed: int  # pass -> fail, or value dropped by more than epsilon
+    improved: int  # fail -> pass, or value rose by more than epsilon
 
 
 def _majority(values: list[bool]) -> bool:
@@ -45,14 +46,18 @@ def case_outcomes(run: RunResult) -> dict[str, CaseOutcome]:
             outcomes[case_id] = CaseOutcome(passed=None)
             continue
         per_metric: dict[str, list[bool]] = defaultdict(list)
+        per_value: dict[str, list[float]] = defaultdict(list)
         for sample in samples:
             for score in sample.scores:
                 if score.passed is not None:
                     per_metric[score.name].append(score.passed)
+                else:
+                    per_value[score.name].append(score.value)
         tokens = [float(s.usage.total_tokens) for s in samples if s.usage is not None]
         outcomes[case_id] = CaseOutcome(
             passed=_majority([s.passed for s in samples]),
             metrics={name: _majority(values) for name, values in per_metric.items()},
+            values={name: sum(v) / len(v) for name, v in per_value.items()},
             tokens=sum(tokens) / len(tokens) if tokens else None,
         )
     return outcomes
@@ -131,7 +136,7 @@ def paired_rate(
     candidate: Mapping[str, CaseOutcome],
     case_ids: Iterable[str],
     metric: str | None = None,
-) -> PairedRate | None:
+) -> Paired | None:
     """Pass rate of ``metric`` (None = the case's overall pass) on the given paired cases."""
     pairs: list[tuple[bool, bool]] = []
     for case_id in case_ids:
@@ -144,12 +149,38 @@ def paired_rate(
     if not pairs:
         return None
     n = len(pairs)
-    return PairedRate(
+    return Paired(
         baseline=sum(b for b, _ in pairs) / n,
         candidate=sum(c for _, c in pairs) / n,
         n=n,
         regressed=sum(1 for b, c in pairs if b and not c),
         improved=sum(1 for b, c in pairs if c and not b),
+    )
+
+
+def paired_values(
+    baseline: Mapping[str, CaseOutcome],
+    candidate: Mapping[str, CaseOutcome],
+    case_ids: Iterable[str],
+    metric: str,
+    *,
+    epsilon: float = 0.0,
+) -> Paired | None:
+    """Mean of a continuous ``metric``; a case regressed/improved if it moved by > epsilon."""
+    pairs = [
+        (baseline[i].values[metric], candidate[i].values[metric])
+        for i in case_ids
+        if metric in baseline[i].values and metric in candidate[i].values
+    ]
+    if not pairs:
+        return None
+    n = len(pairs)
+    return Paired(
+        baseline=sum(b for b, _ in pairs) / n,
+        candidate=sum(c for _, c in pairs) / n,
+        n=n,
+        regressed=sum(1 for b, c in pairs if b - c > epsilon),
+        improved=sum(1 for b, c in pairs if c - b > epsilon),
     )
 
 

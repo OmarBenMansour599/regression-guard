@@ -31,9 +31,11 @@ class RetryPolicy:
     base_delay_s: float = 1.0
     max_delay_s: float = 30.0
     # 429s without Retry-After (e.g. a throttled shared upstream pool) last much longer than
-    # transient 5xx errors: wait longer, with a guaranteed minimum (equal jitter).
+    # transport glitches: wait longer, with a guaranteed minimum (equal jitter).
     rate_limit_base_delay_s: float = 5.0
     rate_limit_max_delay_s: float = 60.0
+    # 5xx from an overloaded upstream also need a real pause (equal jitter, 2 s base).
+    server_error_base_delay_s: float = 2.0
     abort_after_consecutive_failures: int = 5
 
 
@@ -104,14 +106,18 @@ class Executor:
         self.retries = 0
         self.served_models: set[str] = set()  # model ids the provider says it used
 
-    def _backoff(self, attempt: int, *, rate_limited: bool) -> float:
-        """Transient errors: full jitter in [0, ceiling].
-        Rate limits: equal jitter in [ceiling/2, ceiling], so we never retry almost instantly.
+    def _backoff(self, attempt: int, *, status: int | None) -> float:
+        """Transport glitches: full jitter in [0, ceiling].
+        Rate limits and server errors: equal jitter in [ceiling/2, ceiling], so we never
+        retry almost instantly against a struggling upstream.
         """
         p = self._policy
         factor = float(1 << attempt)  # 2**attempt as an exact int, attempt >= 0
-        if rate_limited:
+        if status == 429:
             ceiling = min(p.rate_limit_max_delay_s, p.rate_limit_base_delay_s * factor)
+            return ceiling / 2 + self._rng.uniform(0, ceiling / 2)
+        if status is not None and status >= 500:
+            ceiling = min(p.max_delay_s, p.server_error_base_delay_s * factor)
             return ceiling / 2 + self._rng.uniform(0, ceiling / 2)
         ceiling = min(p.max_delay_s, p.base_delay_s * factor)
         return self._rng.uniform(0, ceiling)
@@ -159,7 +165,7 @@ class Executor:
                     delay = (
                         min(exc.retry_after_s, _MAX_RETRY_AFTER_S)
                         if exc.retry_after_s is not None
-                        else self._backoff(attempt - 1, rate_limited=exc.status_code == 429)
+                        else self._backoff(attempt - 1, status=exc.status_code)
                     )
                     self.retries += 1
                     # Short line only: the full message is kept on the case if it finally fails.

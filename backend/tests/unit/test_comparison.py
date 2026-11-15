@@ -8,9 +8,11 @@ from regguard.comparison.verdict import compare
 from regguard.core.errors import ComparisonError
 from regguard.core.gating import GateConfig, MetricThreshold
 from regguard.core.types import (
+    AggregateScore,
     CaseResult,
     Comparison,
     MetricDelta,
+    MetricKind,
     MetricScore,
     RunStatus,
     Severity,
@@ -153,6 +155,54 @@ def test_critical_case_rule_can_be_disabled() -> None:
     cand = make_run(outcomes(40, fail=[5]), run_id="cand")
     gate = GateConfig(critical_cases_must_not_regress=False)
     assert "critical_case_regressed" not in codes(compare(base, cand, gate))
+
+
+def test_broken_format_is_not_a_classification_regression() -> None:
+    """The Phase 5a demo: v2 wrapped 4 outputs in a list. Format failed, labels did not."""
+    base = make_run(outcomes(12))
+    cand = make_run(outcomes(12, fail=[1, 2, 3, 4], code="schema"), run_id="cand")
+    c = compare(base, cand, GATE)
+    assert c.verdict is Verdict.FAIL
+    schema = metric(c, "schema_valid")
+    assert (schema.regressed, schema.level) == (4, ThresholdLevel.CRITICAL)
+    label = metric(c, "label_exact")
+    assert label.n == 8  # the 4 invalid cases are not paired for the label
+    assert label.delta == 0
+    assert label.level is ThresholdLevel.OK
+    assert {r.metric for r in c.reasons if r.severity is Severity.FAIL} == {"schema_valid"}
+
+
+def test_continuous_values_pair_with_epsilon_and_sign_test() -> None:
+    ids = [f"email-{i:04d}" for i in range(1, 13)]
+    base = make_run(outcomes(12), similarity=dict.fromkeys(ids, 0.8))
+    worse = {i: 0.8 for i in ids}
+    worse.update({ids[0]: 0.3, ids[1]: 0.3, ids[2]: 0.3, ids[3]: 0.3, ids[4]: 0.75})  # 4 real drops
+    c = compare(base, make_run(outcomes(12), similarity=worse, run_id="cand"), GATE)
+    sim = metric(c, "summary_similarity")
+    assert sim.kind is MetricKind.VALUE
+    assert sim.n == 12
+    assert (sim.regressed, sim.improved) == (4, 0)  # 0.05 drop is within epsilon 0.10
+    assert sim.p_value == pytest.approx(0.0625)
+    assert sim.level is ThresholdLevel.WARN
+    assert c.verdict is Verdict.PASS  # similarity is informational
+    assert "threshold_crossed_info" in codes(c)
+
+
+def test_macro_f1_is_compared_as_an_aggregate() -> None:
+    base = make_run(outcomes(12))
+    cand = make_run(outcomes(12), run_id="cand")
+    agg = {**cand.aggregates, "macro_f1": AggregateScore(value=0.70, n=12)}
+    base_agg = {**base.aggregates, "macro_f1": AggregateScore(value=0.90, n=12)}
+    c = compare(
+        base.model_copy(update={"aggregates": base_agg}),
+        cand.model_copy(update={"aggregates": agg}),
+        GATE,
+    )
+    f1 = metric(c, "macro_f1")
+    assert f1.kind is MetricKind.AGGREGATE
+    assert f1.delta == pytest.approx(-0.20)
+    assert f1.level is ThresholdLevel.CRITICAL
+    assert c.verdict is Verdict.PASS  # informational by default
 
 
 def test_schema_floor_is_a_hard_rule() -> None:

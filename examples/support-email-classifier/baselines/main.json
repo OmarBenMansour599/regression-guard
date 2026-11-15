@@ -2,15 +2,15 @@
   "header": {
     "name": "main",
     "app": "support-email-classifier",
-    "source_run_id": "20261112T134559Z-d06f57",
-    "promoted_at": "2026-11-12T15:41:01.620777Z",
-    "git_sha": "de17c19f22ea9f118eec31a831d38633c42b3a30-dirty",
-    "note": "v1, 12/12 correct",
+    "source_run_id": "20261115T213223Z-b09fb9",
+    "promoted_at": "2026-11-15T21:34:41.914140Z",
+    "git_sha": "dee002380b908769a28bab31bde76392d9e39d50-dirty",
+    "note": "v1 with judge scores",
     "regguard_version": "0.1.0"
   },
   "run": {
     "meta": {
-      "run_id": "20261112T134559Z-d06f57",
+      "run_id": "20261115T213223Z-b09fb9",
       "app": "support-email-classifier",
       "prompt_version": "v1",
       "prompt_hash": "sha256:1b01bf65347781466283896d2387a6756049c6fbd4bf6ca5a1db62a803d61014",
@@ -36,19 +36,53 @@
         "seed": 0
       },
       "n_samples": 1,
-      "case_labels": {},
-      "critical_case_ids": [],
+      "case_labels": {
+        "email-0003": "billing",
+        "email-0005": "technical",
+        "email-0006": "technical",
+        "email-0007": "account",
+        "email-0011": "general",
+        "email-0012": "general",
+        "email-0013": "billing",
+        "email-0015": "billing",
+        "email-0017": "technical",
+        "email-0019": "account",
+        "email-0021": "account",
+        "email-0023": "general"
+      },
+      "critical_case_ids": [
+        "email-0007"
+      ],
       "execution": {
         "cache_mode": "read-write",
         "cache_hits": 12,
         "api_calls": 0,
-        "retries": 0
+        "retries": 0,
+        "judge_cache_hits": 0,
+        "judge_api_calls": 12,
+        "judge_retries": 0
       },
-      "judge": null,
-      "git_sha": "2454e41cf2959dd192137a4701917a3de6f1b22b-dirty",
+      "judge": {
+        "model": "nvidia/nemotron-3.5-super-vl:free",
+        "prompt_id": "summary-judge",
+        "prompt_version": "v1",
+        "prompt_hash": "sha256:2e2a820b73f02126abb8b7a0dc63ef4cac45430bd99e2e2b39cc6c8f6240d36f",
+        "params": {
+          "temperature": 0.0,
+          "max_tokens": 600,
+          "seed": 42,
+          "json_mode": true,
+          "extra": {
+            "reasoning": {
+              "effort": "low"
+            }
+          }
+        }
+      },
+      "git_sha": "dee002380b908769a28bab31bde76392d9e39d50-dirty",
       "trigger": "manual",
-      "started_at": "2026-11-12T13:45:59.886079Z",
-      "finished_at": "2026-11-12T13:45:59.889774Z",
+      "started_at": "2026-11-15T21:32:23.444561Z",
+      "finished_at": "2026-11-15T21:33:11.989672Z",
       "regguard_version": "0.1.0"
     },
     "status": "completed",
@@ -76,6 +110,29 @@
               "expected": "billing",
               "actual": "billing"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 14,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.8,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "The candidate accurately captures the cancellation request and reason without adding incorrect details."
+            }
           }
         ],
         "passed": true,
@@ -85,7 +142,19 @@
           "completion_tokens": 26
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "The candidate accurately captures the cancellation request and reason without adding incorrect details.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 2904.0226999204606,
+          "usage": {
+            "prompt_tokens": 730,
+            "completion_tokens": 208
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0005",
@@ -110,6 +179,29 @@
               "expected": "technical",
               "actual": "technical"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 20,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.47619047619047616,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 4.0,
+            "passed": null,
+            "detail": {
+              "reason": "Main problem is correct, but the request to investigate is missing."
+            }
           }
         ],
         "passed": true,
@@ -119,7 +211,19 @@
           "completion_tokens": 35
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 4,
+          "reason": "Main problem is correct, but the request to investigate is missing.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 34641.14550000522,
+          "usage": {
+            "prompt_tokens": 754,
+            "completion_tokens": 385
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0006",
@@ -144,6 +248,29 @@
               "expected": "technical",
               "actual": "technical"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 14,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.25,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 4.0,
+            "passed": null,
+            "detail": {
+              "reason": "Main problem is correct, but the request to investigate is missing."
+            }
           }
         ],
         "passed": true,
@@ -153,7 +280,19 @@
           "completion_tokens": 26
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 4,
+          "reason": "Main problem is correct, but the request to investigate is missing.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 4431.358099915087,
+          "usage": {
+            "prompt_tokens": 744,
+            "completion_tokens": 251
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0007",
@@ -178,6 +317,29 @@
               "expected": "account",
               "actual": "account"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 15,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.125,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "Covers the login problem and the request for password reset help with no incorrect details."
+            }
           }
         ],
         "passed": true,
@@ -187,7 +349,19 @@
           "completion_tokens": 27
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "Covers the login problem and the request for password reset help with no incorrect details.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 2754.649700014852,
+          "usage": {
+            "prompt_tokens": 744,
+            "completion_tokens": 235
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0011",
@@ -212,6 +386,29 @@
               "expected": "general",
               "actual": "general"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 16,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.4,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 4.0,
+            "passed": null,
+            "detail": {
+              "reason": "Faithful and covers the dark-mode suggestion, but omits the secondary detail that the customer enjoys the app."
+            }
           }
         ],
         "passed": true,
@@ -221,7 +418,19 @@
           "completion_tokens": 28
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 4,
+          "reason": "Faithful and covers the dark-mode suggestion, but omits the secondary detail that the customer enjoys the app.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 4383.498099981807,
+          "usage": {
+            "prompt_tokens": 738,
+            "completion_tokens": 382
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0012",
@@ -246,6 +455,29 @@
               "expected": "general",
               "actual": "general"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 16,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.6666666666666666,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "Accurately captures the partnership inquiry and meeting request with no invented facts."
+            }
           }
         ],
         "passed": true,
@@ -255,7 +487,19 @@
           "completion_tokens": 28
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "Accurately captures the partnership inquiry and meeting request with no invented facts.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 3398.600799962878,
+          "usage": {
+            "prompt_tokens": 745,
+            "completion_tokens": 181
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0013",
@@ -280,6 +524,29 @@
               "expected": "billing",
               "actual": "billing"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 18,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.5555555555555556,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "Captures the unexpected price increase and the request for explanation and restoration without adding false details."
+            }
           }
         ],
         "passed": true,
@@ -289,7 +556,19 @@
           "completion_tokens": 30
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "Captures the unexpected price increase and the request for explanation and restoration without adding false details.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 3507.6491999207065,
+          "usage": {
+            "prompt_tokens": 759,
+            "completion_tokens": 274
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0015",
@@ -314,6 +593,29 @@
               "expected": "billing",
               "actual": "billing"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 16,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.42105263157894735,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "Same problem and request as the email, nothing invented."
+            }
           }
         ],
         "passed": true,
@@ -323,7 +625,19 @@
           "completion_tokens": 28
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "Same problem and request as the email, nothing invented.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 1917.409999994561,
+          "usage": {
+            "prompt_tokens": 725,
+            "completion_tokens": 185
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0017",
@@ -348,6 +662,29 @@
               "expected": "technical",
               "actual": "technical"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 17,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.3333333333333333,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 4.0,
+            "passed": null,
+            "detail": {
+              "reason": "Main problem is correct, but the request to fix the integration is missing."
+            }
           }
         ],
         "passed": true,
@@ -357,7 +694,19 @@
           "completion_tokens": 30
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 4,
+          "reason": "Main problem is correct, but the request to fix the integration is missing.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 3868.1291000684723,
+          "usage": {
+            "prompt_tokens": 736,
+            "completion_tokens": 334
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0019",
@@ -382,6 +731,29 @@
               "expected": "account",
               "actual": "account"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 15,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.6666666666666666,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "Faithful and complete: captures the expired verification link and the request for a new one."
+            }
           }
         ],
         "passed": true,
@@ -391,7 +763,19 @@
           "completion_tokens": 27
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "Faithful and complete: captures the expired verification link and the request for a new one.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 4379.397499957122,
+          "usage": {
+            "prompt_tokens": 740,
+            "completion_tokens": 234
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0021",
@@ -416,6 +800,29 @@
               "expected": "account",
               "actual": "account"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 16,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.75,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "The candidate accurately captures the request for permanent account and profile deletion without adding incorrect details."
+            }
           }
         ],
         "passed": true,
@@ -425,7 +832,19 @@
           "completion_tokens": 28
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "The candidate accurately captures the request for permanent account and profile deletion without adding incorrect details.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 2617.725700023584,
+          "usage": {
+            "prompt_tokens": 737,
+            "completion_tokens": 222
+          },
+          "cached": false,
+          "error": null
+        }
       },
       {
         "case_id": "email-0023",
@@ -450,6 +869,29 @@
               "expected": "general",
               "actual": "general"
             }
+          },
+          {
+            "name": "summary_format",
+            "value": 1.0,
+            "passed": true,
+            "detail": {
+              "words": 14,
+              "problems": []
+            }
+          },
+          {
+            "name": "summary_similarity",
+            "value": 0.125,
+            "passed": null,
+            "detail": {}
+          },
+          {
+            "name": "summary_judge",
+            "value": 5.0,
+            "passed": null,
+            "detail": {
+              "reason": "The candidate accurately captures the feature request for automated weekly report scheduling with no incorrect details."
+            }
           }
         ],
         "passed": true,
@@ -459,7 +901,19 @@
           "completion_tokens": 26
         },
         "cached": true,
-        "error": null
+        "error": null,
+        "judge": {
+          "score": 5,
+          "reason": "The candidate accurately captures the feature request for automated weekly report scheduling with no incorrect details.",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "latency_ms": 4536.036500008777,
+          "usage": {
+            "prompt_tokens": 738,
+            "completion_tokens": 230
+          },
+          "cached": false,
+          "error": null
+        }
       }
     ],
     "aggregates": {
@@ -483,6 +937,24 @@
       },
       "label_exact": {
         "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_format": {
+        "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_similarity": {
+        "value": 0.46412211083263716,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_judge": {
+        "value": 4.666666666666667,
         "n": 12,
         "ci_low": null,
         "ci_high": null
@@ -532,6 +1004,144 @@
       "schema_valid/technical": {
         "value": 1.0,
         "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_format/account": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_format/billing": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_format/general": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_format/technical": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_judge/account": {
+        "value": 5.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_judge/billing": {
+        "value": 5.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_judge/general": {
+        "value": 4.666666666666667,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_judge/technical": {
+        "value": 4.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_similarity/account": {
+        "value": 0.5138888888888888,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_similarity/billing": {
+        "value": 0.5922027290448343,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_similarity/general": {
+        "value": 0.3972222222222222,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "summary_similarity/technical": {
+        "value": 0.3531746031746032,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "precision/account": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "f1/account": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "precision/billing": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "f1/billing": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "precision/general": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "f1/general": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "precision/technical": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "f1/technical": {
+        "value": 1.0,
+        "n": 3,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "macro_f1": {
+        "value": 1.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "judge_error_rate": {
+        "value": 0.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "judge_tokens_total": {
+        "value": 12011.0,
+        "n": 12,
         "ci_low": null,
         "ci_high": null
       },

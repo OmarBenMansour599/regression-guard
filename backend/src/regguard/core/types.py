@@ -64,6 +64,18 @@ class CaseError(FrozenModel):
     retryable: bool = False
 
 
+class JudgeResult(FrozenModel):
+    """One LLM-judge call on one output. Its cost is kept apart from the app's own usage."""
+
+    score: int | None = Field(default=None, ge=1, le=5)  # None when the judge call failed
+    reason: str = ""
+    model: str | None = None
+    latency_ms: float | None = None
+    usage: Usage | None = None
+    cached: bool = False
+    error: CaseError | None = None  # infra failure or unusable judge output; never app quality
+
+
 class CaseResult(FrozenModel):
     case_id: str
     sample_idx: int = Field(default=0, ge=0)
@@ -75,6 +87,7 @@ class CaseResult(FrozenModel):
     usage: Usage | None = None
     cached: bool = False
     error: CaseError | None = None
+    judge: JudgeResult | None = None  # None: judge disabled or not applicable to this case
 
 
 class AggregateScore(FrozenModel):
@@ -98,6 +111,9 @@ class ExecutionStats(FrozenModel):
     cache_hits: int = 0
     api_calls: int = 0  # real provider calls, including retries
     retries: int = 0
+    judge_cache_hits: int = 0
+    judge_api_calls: int = 0
+    judge_retries: int = 0
 
 
 class RunMeta(FrozenModel):
@@ -193,16 +209,23 @@ class ThresholdLevel(StrEnum):
     CRITICAL = "critical"
 
 
+class MetricKind(StrEnum):
+    RATE = "rate"  # binary per case: pass rate, flips tested with McNemar
+    VALUE = "value"  # continuous per case: mean, drops beyond epsilon tested with a sign test
+    AGGREGATE = "aggregate"  # run-level number only (latency percentile, macro-F1): no pairing
+
+
 class MetricDelta(FrozenModel):
     metric: str
+    kind: MetricKind = MetricKind.RATE
     baseline: float
     candidate: float
     delta: float | None  # in `unit`; None when relative and baseline is 0
     unit: str  # "absolute" or "relative"
-    n: int  # paired cases (binary metrics) or candidate sample size (others)
-    regressed: int | None = None  # paired pass->fail flips (binary metrics only)
+    n: int  # paired cases, or candidate sample size for aggregates
+    regressed: int | None = None  # paired cases that got worse (None for aggregates)
     improved: int | None = None
-    p_value: float | None = None  # one-sided exact McNemar (binary metrics only)
+    p_value: float | None = None  # one-sided exact binomial (None for aggregates)
     level: ThresholdLevel = ThresholdLevel.OK
     gating: bool = False
 

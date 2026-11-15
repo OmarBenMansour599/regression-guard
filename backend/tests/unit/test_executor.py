@@ -81,8 +81,17 @@ async def test_retries_then_succeeds(tmp_path: Path) -> None:
     assert outcome.completion is not None
     assert outcome.attempts == 3
     assert executor.retries == 2
+    # 503s: equal jitter on a 2 s base -> [1, 2] then [2, 4]
+    for delay, (low, high) in zip(t.sleeps, [(1, 2), (2, 4)], strict=True):
+        assert low <= delay <= high
+
+
+async def test_transport_errors_use_short_full_jitter(tmp_path: Path) -> None:
+    glitch = ProviderError("reset", retryable=True, status_code=None)
+    executor, t = make_executor(scripted(glitch, glitch, "ok"), tmp_path)
+    await executor.call(REQUEST)
     assert len(t.sleeps) == 2
-    assert all(0 <= d <= 2.0 for d in t.sleeps)  # full jitter within 1s, 2s ceilings
+    assert all(0 <= d <= 2.0 for d in t.sleeps)  # full jitter within 1 s, 2 s ceilings
 
 
 async def test_rate_limit_backoff_is_long_with_minimum(tmp_path: Path) -> None:

@@ -3,11 +3,13 @@
 from regguard.core.config import Settings
 from regguard.core.errors import ConfigError
 from regguard.providers.base import LLMProvider
-from regguard.providers.mock_provider import MockProvider
+from regguard.providers.mock_provider import MockProvider, Responder
 from regguard.providers.openai_compatible import OpenAICompatibleProvider
 
 
-def build_provider(settings: Settings, *, mock_response: str | None = None) -> LLMProvider:
+def build_provider(
+    settings: Settings, *, mock_response: Responder | str | None = None
+) -> LLMProvider:
     if settings.llm_provider == "mock":
         return MockProvider(mock_response) if mock_response is not None else MockProvider()
     if settings.llm_api_key is None:

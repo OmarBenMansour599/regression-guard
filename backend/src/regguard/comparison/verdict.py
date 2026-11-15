@@ -2,9 +2,9 @@
 
 Rules (ADR 0003):
 - FAIL: a gated metric crosses its *critical* threshold AND there is evidence: the exact
-  one-sided McNemar test is significant (p < alpha) OR at least ``min_regressed_cases``
-  paired cases regressed. Continuous metrics (tokens, latency) have no paired test, so
-  crossing critical is enough.
+  one-sided McNemar test (rates) or sign test (per-case values) is significant
+  (p < alpha) OR at least ``min_regressed_cases`` paired cases regressed. Run-level
+  aggregates (tokens, latency, macro-F1) have no pairing, so crossing critical is enough.
 - FAIL (hard rules): candidate schema validity below the floor; a ``critical`` case regressed.
 - WARN: a gated metric crosses *warn*, or crosses *critical* without enough evidence
   ("underpowered"); or the dataset changed between the two runs.
@@ -16,13 +16,14 @@ from collections import Counter
 from datetime import UTC, datetime
 
 from regguard.comparison.diff import (
-    CaseOutcome,
+    Paired,
     case_labels,
     case_outcomes,
     diff_cases,
     mean_tokens,
     paired_ids,
     paired_rate,
+    paired_values,
 )
 from regguard.comparison.stats import mcnemar_one_sided, min_regressions_for_significance
 from regguard.core.errors import ComparisonError
@@ -31,6 +32,7 @@ from regguard.core.types import (
     CaseChange,
     Comparison,
     MetricDelta,
+    MetricKind,
     Reason,
     RunResult,
     RunStatus,
@@ -41,7 +43,7 @@ from regguard.core.types import (
 
 _EPS = 1e-9  # so that e.g. exactly -3 points counts as crossing a -0.03 threshold
 _PASS_RATE = "pass_rate"  # noqa: S105 - a metric name, not a password
-_CONTINUOUS = ("latency_ms_p50", "latency_ms_p95")
+_AGGREGATE_ONLY = ("latency_ms_p50", "latency_ms_p95", "macro_f1")
 
 
 def _crossed(delta: float, threshold: float | None) -> bool:
@@ -72,6 +74,12 @@ def _fmt_delta(delta: float | None, unit: str) -> str:
     return f"{delta * 100:+.1f} pts" if unit == "absolute" else f"{delta * 100:+.0f}%"
 
 
+def _fmt_value(value: float, kind: MetricKind) -> str:
+    if kind is MetricKind.RATE:
+        return f"{value:.1%}"
+    return f"{value:.2f}" if abs(value) < 10 else f"{value:.0f}"
+
+
 def _verdict(reasons: list[Reason]) -> Verdict:
     severities = {r.severity for r in reasons}
     if Severity.FAIL in severities:
@@ -89,33 +97,25 @@ class _Builder:
         self.metrics: list[MetricDelta] = []
         self.reasons: list[Reason] = []
 
-    def binary(
-        self,
-        name: str,
-        base: dict[str, CaseOutcome],
-        cand: dict[str, CaseOutcome],
-        ids: set[str],
-        metric: str | None,
-    ) -> None:
-        rate = paired_rate(base, cand, ids, metric)
-        if rate is None:
-            return
+    def paired(self, name: str, kind: MetricKind, p: Paired) -> None:
+        """A metric measured per case in both runs: evidence = exact test or enough flips."""
         threshold = self.gate.threshold_for(name)
         unit = threshold.unit if threshold else "absolute"
-        delta = _delta(rate.baseline, rate.candidate, unit)
+        delta = _delta(p.baseline, p.candidate, unit)
         level = _level(delta, threshold)
-        p_value = mcnemar_one_sided(rate.regressed, rate.improved)
+        p_value = mcnemar_one_sided(p.regressed, p.improved)
         gating = threshold.gating if threshold else False
         self.metrics.append(
             MetricDelta(
                 metric=name,
-                baseline=rate.baseline,
-                candidate=rate.candidate,
+                kind=kind,
+                baseline=p.baseline,
+                candidate=p.candidate,
                 delta=delta,
                 unit=unit,
-                n=rate.n,
-                regressed=rate.regressed,
-                improved=rate.improved,
+                n=p.n,
+                regressed=p.regressed,
+                improved=p.improved,
                 p_value=p_value,
                 level=level,
                 gating=gating,
@@ -124,14 +124,15 @@ class _Builder:
         if level is ThresholdLevel.OK:
             return
         change = (
-            f"{name} {rate.baseline:.1%} -> {rate.candidate:.1%} ({_fmt_delta(delta, unit)}), "
-            f"{rate.regressed} regressed / {rate.improved} improved of {rate.n}, p={p_value:.3f}"
+            f"{name} {_fmt_value(p.baseline, kind)} -> {_fmt_value(p.candidate, kind)} "
+            f"({_fmt_delta(delta, unit)}), {p.regressed} regressed / {p.improved} improved "
+            f"of {p.n}, p={p_value:.3f}"
         )
         if not gating:
             self.add("threshold_crossed_info", Severity.INFO, f"{change} (not gating)", name)
         elif level is ThresholdLevel.WARN:
             self.add("warn_regression", Severity.WARN, change, name)
-        elif p_value < self.gate.alpha or rate.regressed >= self.gate.min_regressed_cases:
+        elif p_value < self.gate.alpha or p.regressed >= self.gate.min_regressed_cases:
             self.add("critical_regression", Severity.FAIL, change, name)
         else:
             self.add(
@@ -142,7 +143,9 @@ class _Builder:
                 name,
             )
 
-    def continuous(self, name: str, baseline: float, candidate: float, n: int) -> None:
+    def aggregate(self, name: str, baseline: float, candidate: float, n: int) -> None:
+        """A run-level number with no per-case pairing: crossing critical is enough."""
+        kind = MetricKind.AGGREGATE
         threshold = self.gate.threshold_for(name)
         unit = threshold.unit if threshold else "relative"
         delta = _delta(baseline, candidate, unit)
@@ -151,6 +154,7 @@ class _Builder:
         self.metrics.append(
             MetricDelta(
                 metric=name,
+                kind=kind,
                 baseline=baseline,
                 candidate=candidate,
                 delta=delta,
@@ -162,7 +166,10 @@ class _Builder:
         )
         if level is ThresholdLevel.OK:
             return
-        change = f"{name} {baseline:.0f} -> {candidate:.0f} ({_fmt_delta(delta, unit)})"
+        change = (
+            f"{name} {_fmt_value(baseline, kind)} -> {_fmt_value(candidate, kind)} "
+            f"({_fmt_delta(delta, unit)})"
+        )
         if not gating:
             self.add("threshold_crossed_info", Severity.INFO, f"{change} (not gating)", name)
         elif level is ThresholdLevel.WARN:
@@ -226,7 +233,8 @@ def compare(
     critical = set(baseline.meta.critical_case_ids) | set(candidate.meta.critical_case_ids)
     cases = diff_cases(base, cand, labels=labels, critical=critical)
     ids = paired_ids(base, cand)
-    if not ids:
+    overall = paired_rate(base, cand, ids, None)
+    if not ids or overall is None:
         raise ComparisonError("The two runs have no successfully evaluated cases in common")
 
     builder = _Builder(gate)
@@ -238,28 +246,39 @@ def compare(
             f"{candidate.meta.dataset_version}); only the {len(ids)} shared case(s) were compared",
         )
 
-    # Binary metrics on paired cases: overall pass, each metric, then per-label slices.
-    builder.binary(_PASS_RATE, base, cand, ids, None)
-    metric_names = sorted(
+    # Per-case metrics on paired cases: overall pass, each binary metric, per-label slices,
+    # then continuous per-case values (similarity, judge score).
+    builder.paired(_PASS_RATE, MetricKind.RATE, overall)
+    binary_names = sorted(
         {m for i in ids for m in base[i].metrics} & {m for i in ids for m in cand[i].metrics}
     )
-    for metric in metric_names:
-        builder.binary(metric, base, cand, ids, metric)
-    for metric in metric_names:
+    for metric in binary_names:
+        if (p := paired_rate(base, cand, ids, metric)) is not None:
+            builder.paired(metric, MetricKind.RATE, p)
+    for metric in binary_names:
         for label in sorted({labels[i] for i in ids if i in labels}):
             name = f"{metric}/{label}"
             if gate.threshold_for(name) is not None:
                 in_slice = {i for i in ids if labels.get(i) == label}
-                builder.binary(name, base, cand, in_slice, metric)
+                if (p := paired_rate(base, cand, in_slice, metric)) is not None:
+                    builder.paired(name, MetricKind.RATE, p)
+    value_names = sorted(
+        {m for i in ids for m in base[i].values} & {m for i in ids for m in cand[i].values}
+    )
+    for metric in value_names:
+        threshold = gate.threshold_for(metric)
+        epsilon = threshold.epsilon if threshold else 0.0
+        if (p := paired_values(base, cand, ids, metric, epsilon=epsilon)) is not None:
+            builder.paired(metric, MetricKind.VALUE, p)
 
-    # Continuous metrics: latency (fresh calls only, from each run), tokens per paired case.
-    for key in _CONTINUOUS:
+    # Run-level aggregates: latency (fresh calls only), macro-F1, tokens per paired case.
+    for key in _AGGREGATE_ONLY:
         if key in baseline.aggregates and key in candidate.aggregates:
             b_agg, c_agg = baseline.aggregates[key], candidate.aggregates[key]
-            builder.continuous(key, b_agg.value, c_agg.value, c_agg.n)
+            builder.aggregate(key, b_agg.value, c_agg.value, c_agg.n)
     b_tokens, c_tokens = mean_tokens(base, ids), mean_tokens(cand, ids)
     if b_tokens is not None and c_tokens is not None:
-        builder.continuous("tokens_per_case", b_tokens, c_tokens, len(ids))
+        builder.aggregate("tokens_per_case", b_tokens, c_tokens, len(ids))
 
     # Hard rules.
     schema = candidate.aggregates.get("schema_valid")
