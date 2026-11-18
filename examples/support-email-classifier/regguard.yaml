@@ -12,7 +12,7 @@ baselines_dir: baselines # pinned baselines (change only via `regguard baseline 
 # Skip it for one run with `regguard run --no-judge`.
 judge:
   prompts_dir: prompts/judge
-  version: v1
+  version: v2 # v2: personal data caps the score at 3; pleasantries are not details
   enabled: true
 
 # Regression gate (ADR 0003). Deltas are candidate - baseline.

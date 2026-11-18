@@ -14,6 +14,7 @@ from regguard.core.types import (
     MetricDelta,
     MetricKind,
     MetricScore,
+    RunResult,
     RunStatus,
     Severity,
     ThresholdLevel,
@@ -186,6 +187,68 @@ def test_continuous_values_pair_with_epsilon_and_sign_test() -> None:
     assert sim.level is ThresholdLevel.WARN
     assert c.verdict is Verdict.PASS  # similarity is informational
     assert "threshold_crossed_info" in codes(c)
+
+
+def judged(run: RunResult, score: float, judge: dict[str, str] | None) -> RunResult:
+    """Give every valid case a summary_judge score and record which judge produced it."""
+    cases = [
+        c.model_copy(
+            update={
+                "scores": [*c.scores, MetricScore(name="summary_judge", value=score, passed=None)]
+            }
+        )
+        if c.parsed_output is not None
+        else c
+        for c in run.cases
+    ]
+    meta = run.meta.model_copy(update={"judge": judge})
+    return run.model_copy(update={"cases": cases, "meta": meta})
+
+
+JUDGE_V1 = {"model": "judge-model", "prompt_version": "v1", "prompt_hash": "sha256:1"}
+JUDGE_V2 = {**JUDGE_V1, "prompt_version": "v2", "prompt_hash": "sha256:2"}
+
+
+def test_judge_scores_compared_when_the_judge_is_the_same() -> None:
+    base = judged(make_run(outcomes(12)), 5.0, JUDGE_V1)
+    cand = judged(make_run(outcomes(12), run_id="cand"), 3.0, JUDGE_V1)
+    c = compare(base, cand, GATE)
+    judge = metric(c, "summary_judge")
+    assert judge.kind is MetricKind.VALUE
+    assert (judge.regressed, judge.improved) == (12, 0)
+    assert judge.level is ThresholdLevel.CRITICAL
+    assert "judge_changed" not in codes(c)
+    assert c.verdict is Verdict.PASS  # judge is report-only by default
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        JUDGE_V2,  # judge prompt changed
+        {**JUDGE_V1, "model": "another-judge"},  # judge model changed
+        None,  # an older run without judge provenance
+    ],
+)
+def test_judge_scores_not_compared_across_different_judges(other: dict[str, str] | None) -> None:
+    base = judged(make_run(outcomes(12)), 5.0, JUDGE_V1)
+    cand = judged(make_run(outcomes(12), run_id="cand"), 3.0, other)
+    c = compare(base, cand, GATE)
+    assert "summary_judge" not in {m.metric for m in c.metrics}
+    reason = next(r for r in c.reasons if r.code == "judge_changed")
+    assert reason.severity is Severity.INFO
+    assert reason.metric == "summary_judge"
+    assert c.verdict is Verdict.PASS
+
+
+def test_judge_change_warns_once_the_judge_is_gating() -> None:
+    gate = GateConfig(
+        metrics={"summary_judge": MetricThreshold(warn=-0.05, unit="relative", gating=True)}
+    )
+    base = judged(make_run(outcomes(12)), 5.0, JUDGE_V1)
+    cand = judged(make_run(outcomes(12), run_id="cand"), 5.0, JUDGE_V2)
+    c = compare(base, cand, gate)
+    assert next(r for r in c.reasons if r.code == "judge_changed").severity is Severity.WARN
+    assert c.verdict is Verdict.WARN
 
 
 def test_macro_f1_is_compared_as_an_aggregate() -> None:

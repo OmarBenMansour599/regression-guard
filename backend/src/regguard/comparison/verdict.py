@@ -40,6 +40,7 @@ from regguard.core.types import (
     ThresholdLevel,
     Verdict,
 )
+from regguard.metrics.judge import JUDGE_METRIC
 
 _EPS = 1e-9  # so that e.g. exactly -3 points counts as crossing a -0.03 threshold
 _PASS_RATE = "pass_rate"  # noqa: S105 - a metric name, not a password
@@ -181,6 +182,20 @@ class _Builder:
         self.reasons.append(Reason(code=code, severity=severity, message=message, metric=metric))
 
 
+_JUDGE_IDENTITY = ("model", "prompt_hash")
+
+
+def _judge_change(baseline: RunResult, candidate: RunResult) -> str | None:
+    """Describe how the judge differs between the two runs, or None if it is the same judge."""
+    b, c = baseline.meta.judge or {}, candidate.meta.judge or {}
+    changed = [key for key in _JUDGE_IDENTITY if b.get(key) != c.get(key)]
+    if not changed:
+        return None
+    b_name = f"{b.get('prompt_version', '?')} / {b.get('model', '?')}"
+    c_name = f"{c.get('prompt_version', '?')} / {c.get('model', '?')}"
+    return f"baseline {b_name}, candidate {c_name}"
+
+
 def _check_comparable(
     baseline: RunResult, candidate: RunResult, allow_dataset_change: bool
 ) -> None:
@@ -265,6 +280,19 @@ def compare(
     value_names = sorted(
         {m for i in ids for m in base[i].values} & {m for i in ids for m in cand[i].values}
     )
+    if JUDGE_METRIC in value_names and (change := _judge_change(baseline, candidate)):
+        # Scores from different judges are on different scales: comparing them would show a
+        # "regression" or "improvement" caused by the judge, not by the app.
+        value_names.remove(JUDGE_METRIC)
+        threshold = gate.threshold_for(JUDGE_METRIC)
+        severity = Severity.WARN if threshold and threshold.gating else Severity.INFO
+        builder.add(
+            "judge_changed",
+            severity,
+            f"{JUDGE_METRIC} not compared: the runs were graded by different judges ({change}). "
+            "Re-run the baseline with the current judge (app calls are cached) and promote it.",
+            JUDGE_METRIC,
+        )
     for metric in value_names:
         threshold = gate.threshold_for(metric)
         epsilon = threshold.epsilon if threshold else 0.0

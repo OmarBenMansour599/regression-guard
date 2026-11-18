@@ -246,11 +246,23 @@ def _settings(tmp_path: Path) -> Settings:
     )
 
 
-def test_example_config_enables_the_judge() -> None:
+def test_example_config_uses_judge_v2() -> None:
     cfg = load_app_config(EXAMPLE_APP / "regguard.yaml")
     assert cfg.judge is not None
     assert cfg.judge.prompts_dir == JUDGE_DIR.resolve()
-    assert load_judge_prompt(cfg, SPEC) == JUDGE
+    assert load_judge_prompt(cfg, SPEC) == load_prompt_version(JUDGE_DIR, "v2")
+
+
+def test_judge_v2_adds_the_personal_data_rule() -> None:
+    v2 = load_prompt_version(JUDGE_DIR, "v2")
+    assert v2.content_hash != JUDGE.content_hash
+    assert v2.model == JUDGE.model  # same judge model: only the rubric changed
+    assert "Personal data rule" in v2.system
+    assert "AT MOST 3" in v2.system
+    # Every few-shot answer follows the judge's own output contract.
+    for example in v2.few_shot:
+        parse_judge_output(example.output)
+    assert any('"score": 3' in ex.output and "personal data" in ex.output for ex in v2.few_shot)
 
 
 def test_disabled_judge_loads_nothing(tmp_path: Path) -> None:
