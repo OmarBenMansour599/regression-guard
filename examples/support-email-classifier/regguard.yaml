@@ -15,6 +15,11 @@ judge:
   version: v2 # v2: personal data caps the score at 3; pleasantries are not details
   enabled: true
 
+# Slack notifications, sent only when a command runs with --notify (see docs/slack-setup.md).
+# fail/warn: comparison verdicts; error: run with status ERROR; drift: a NEW drift episode.
+notify:
+  events: [fail, error, drift] # add "warn" to also be told about warnings
+
 # Regression gate (ADR 0003). Deltas are candidate - baseline.
 # Negative threshold = a drop is bad; positive = a rise is bad.
 # absolute: rates in 0..1 (-0.03 = -3 points); relative: fraction of baseline (+0.25 = +25%).

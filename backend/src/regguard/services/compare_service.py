@@ -69,6 +69,17 @@ def ensure_baseline_exists(config: AppConfig, name: str) -> None:
     load_baseline(config.baselines_dir, name)
 
 
+def load_reference(
+    config: AppConfig, runs_dir: Path, baseline_name: str | None, against_run: str | None
+) -> tuple[RunResult, str | None]:
+    """The run to compare against: a stored run (``against_run``) or a named baseline."""
+    if against_run is not None:
+        return load_run(runs_dir, against_run), None
+    if baseline_name is None:
+        raise ComparisonError("Give a baseline name or a run id to compare against")
+    return load_baseline(config.baselines_dir, baseline_name).run, baseline_name
+
+
 def compare_with_baseline(
     config: AppConfig,
     runs_dir: Path,
@@ -79,12 +90,7 @@ def compare_with_baseline(
     allow_dataset_change: bool = False,
 ) -> tuple[Comparison, Path]:
     """Compare ``candidate`` with a named baseline, or directly with another stored run."""
-    if against_run is not None:
-        reference, name = load_run(runs_dir, against_run), None
-    else:
-        if baseline_name is None:
-            raise ComparisonError("Give a baseline name or a run id to compare against")
-        reference, name = load_baseline(config.baselines_dir, baseline_name).run, baseline_name
+    reference, name = load_reference(config, runs_dir, baseline_name, against_run)
     comparison = compare(
         reference,
         candidate,

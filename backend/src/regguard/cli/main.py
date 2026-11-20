@@ -39,6 +39,7 @@ from regguard.providers.factory import build_provider
 from regguard.services.compare_service import (
     compare_with_baseline,
     ensure_baseline_exists,
+    load_reference,
     promote_baseline,
 )
 from regguard.services.datasets import load_app_dataset
@@ -53,6 +54,15 @@ from regguard.services.history_service import (
     upgrade_database,
 )
 from regguard.services.invoke import InvokeResult, invoke_once
+from regguard.services.notify_service import (
+    NotifyResult,
+    NotifyStatus,
+    notify_check,
+    notify_comparison,
+    notify_drift,
+    notify_run_error,
+)
+from regguard.services.report_service import write_report
 from regguard.services.run_service import (
     BudgetExceededError,
     RunOptions,
@@ -90,6 +100,8 @@ history_app = typer.Typer(help="Browse the run history database.", no_args_is_he
 app.add_typer(history_app, name="history")
 db_app = typer.Typer(help="Manage the history database schema.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
+notify_app = typer.Typer(help="Slack notifications.", no_args_is_help=True)
+app.add_typer(notify_app, name="notify")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", "-c", help="Path to the app's regguard.yaml.")
@@ -387,6 +399,12 @@ AllowDatasetChangeOption = Annotated[
         help="Compare even if the dataset changed (shared cases only, with a warning).",
     ),
 ]
+ReportOption = Annotated[
+    bool, typer.Option("--report", help="Write an HTML report and a Markdown summary.")
+]
+NotifyOption = Annotated[
+    bool, typer.Option("--notify", help="Send a Slack message for events set in `notify.events`.")
+]
 
 
 @app.command("run")
@@ -414,6 +432,8 @@ def run(
     judge: Annotated[
         bool, typer.Option("--judge/--no-judge", help="Grade summaries with the LLM judge.")
     ] = True,
+    report: ReportOption = False,
+    notify: NotifyOption = False,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Evaluate a prompt version against the golden dataset and save the result."""
@@ -479,21 +499,31 @@ def run(
     _print_summary(result)
     typer.echo(f"\nSaved: {settings.runs_dir / result.meta.run_id / 'result.json'}")
     _warn(record_run(settings, result))
+    comparison: Comparison | None = None
+    reference: RunResult | None = None
     if result.status is RunStatus.ERROR:
         if baseline is not None:
             typer.secho("Comparison skipped: the run itself failed.", fg=typer.colors.RED)
-        raise typer.Exit(EXIT_PROVIDER_ERROR)
-    if baseline is not None:
-        _compare_and_exit(
+    elif baseline is not None:
+        comparison, reference = _compare(
             cfg,
             settings,
             result,
             baseline_name=baseline,
             against_run=None,
             allow_dataset_change=allow_dataset_change,
-            fail_on_warn=fail_on_warn,
             show_all=False,
         )
+    _finish(
+        cfg,
+        settings,
+        result,
+        comparison,
+        reference,
+        report=report,
+        notify=notify,
+        fail_on_warn=fail_on_warn,
+    )
 
 
 @runs_app.command("list")
@@ -613,7 +643,7 @@ def _print_comparison(c: Comparison, *, show_all: bool) -> None:
     typer.secho(f"\nVERDICT: {c.verdict.value.upper()}", fg=_VERDICT_COLORS[c.verdict], bold=True)
 
 
-def _compare_and_exit(
+def _compare(
     cfg: AppConfig,
     settings: Settings,
     candidate: RunResult,
@@ -621,10 +651,12 @@ def _compare_and_exit(
     baseline_name: str | None,
     against_run: str | None,
     allow_dataset_change: bool,
-    fail_on_warn: bool,
     show_all: bool,
-) -> None:
+    quiet: bool = False,
+) -> tuple[Comparison, RunResult]:
+    """Compare, print, save and record. Returns the comparison and the reference run."""
     try:
+        reference, _ = load_reference(cfg, settings.runs_dir, baseline_name, against_run)
         comparison, path = compare_with_baseline(
             cfg,
             settings.runs_dir,
@@ -635,9 +667,63 @@ def _compare_and_exit(
         )
     except (ComparisonError, DataValidationError) as exc:
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
-    _print_comparison(comparison, show_all=show_all)
-    typer.echo(f"Saved: {path}")
+    if quiet:
+        typer.secho(
+            f"Verdict vs {baseline_name or against_run}: {comparison.verdict.value.upper()}",
+            fg=_VERDICT_COLORS[comparison.verdict],
+        )
+    else:
+        _print_comparison(comparison, show_all=show_all)
+        typer.echo(f"Saved: {path}")
     _warn(record_comparison(settings, comparison, candidate))
+    return comparison, reference
+
+
+def _print_notify(result: NotifyResult | None) -> None:
+    if result is None:
+        return
+    if result.status is NotifyStatus.SENT:
+        typer.secho(result.message, fg=typer.colors.GREEN)
+    elif result.status is NotifyStatus.SKIPPED:
+        typer.echo(result.message)
+    else:
+        _warn(result.message)
+
+
+def _finish(
+    cfg: AppConfig,
+    settings: Settings,
+    run_result: RunResult,
+    comparison: Comparison | None,
+    reference: RunResult | None,
+    *,
+    report: bool,
+    notify: bool,
+    fail_on_warn: bool,
+) -> None:
+    """Write the report, send the notification, then exit with the verdict's code."""
+    report_path: str | None = None
+    if report:
+        try:
+            files = write_report(
+                cfg, settings, run_result, comparison=comparison, baseline=reference
+            )
+        except OSError as exc:
+            _warn(f"Report not written: {exc}")
+        else:
+            report_path = str(files.html)
+            typer.echo(f"Report:  {files.html}\nSummary: {files.markdown}")
+    if notify:
+        if run_result.status is RunStatus.ERROR:
+            _print_notify(notify_run_error(cfg, settings, run_result, report_path=report_path))
+        elif comparison is not None:
+            _print_notify(
+                notify_comparison(cfg, settings, comparison, run_result, report_path=report_path)
+            )
+    if run_result.status is RunStatus.ERROR:
+        raise typer.Exit(EXIT_PROVIDER_ERROR)
+    if comparison is None:
+        return
     if comparison.verdict is Verdict.ERROR:
         raise typer.Exit(EXIT_PROVIDER_ERROR)
     if comparison.verdict is Verdict.FAIL or (fail_on_warn and comparison.verdict is Verdict.WARN):
@@ -656,6 +742,8 @@ def compare_cmd(
     fail_on_warn: FailOnWarnOption = False,
     allow_dataset_change: AllowDatasetChangeOption = False,
     all_cases: Annotated[bool, typer.Option("--all", help="List unchanged cases too.")] = False,
+    report: ReportOption = False,
+    notify: NotifyOption = False,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Compare a stored run with a baseline and print the PASS / WARN / FAIL verdict."""
@@ -665,16 +753,73 @@ def compare_cmd(
         result = load_run(settings.runs_dir, candidate)
     except DataValidationError as exc:
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
-    _compare_and_exit(
+    comparison, reference = _compare(
         cfg,
         settings,
         result,
         baseline_name=baseline,
         against_run=against,
         allow_dataset_change=allow_dataset_change,
-        fail_on_warn=fail_on_warn,
         show_all=all_cases,
     )
+    _finish(
+        cfg,
+        settings,
+        result,
+        comparison,
+        reference,
+        report=report,
+        notify=notify,
+        fail_on_warn=fail_on_warn,
+    )
+
+
+@app.command("report")
+def report_cmd(
+    run_id: Annotated[str, typer.Argument(help="Run id or unique prefix.")],
+    baseline: Annotated[
+        str, typer.Option("--baseline", "-b", help="Baseline to compare against.")
+    ] = "main",
+    against: Annotated[
+        str | None, typer.Option("--against", help="Compare with this run id instead.")
+    ] = None,
+    compare: Annotated[
+        bool, typer.Option("--compare/--no-compare", help="Include a baseline comparison.")
+    ] = True,
+    allow_dataset_change: AllowDatasetChangeOption = False,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Write the HTML report and Markdown summary of a stored run (no API calls)."""
+    settings = load_settings()
+    cfg = _load_config(config)
+    try:
+        result = load_run(settings.runs_dir, run_id)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    comparison: Comparison | None = None
+    reference: RunResult | None = None
+    if compare:
+        missing = against is None and not (cfg.baselines_dir / f"{baseline}.json").is_file()
+        if missing:
+            _warn(f"Baseline '{baseline}' not found: the report has no comparison.")
+        else:
+            comparison, reference = _compare(
+                cfg,
+                settings,
+                result,
+                baseline_name=baseline,
+                against_run=against,
+                allow_dataset_change=allow_dataset_change,
+                show_all=False,
+                quiet=True,
+            )
+    try:
+        files = write_report(cfg, settings, result, comparison=comparison, baseline=reference)
+    except OSError as exc:
+        raise _fail(f"cannot write the report: {exc}", EXIT_CONFIG_ERROR) from exc
+    for note in files.notes:
+        typer.secho(f"  note: {note}", fg=typer.colors.YELLOW)
+    typer.echo(f"Report:  {files.html}\nSummary: {files.markdown}")
 
 
 @baseline_app.command("promote")
@@ -837,6 +982,7 @@ def drift_cmd(
     fail_on_drift: Annotated[
         bool, typer.Option("--fail-on-drift", help="Exit with code 4 when drift is detected.")
     ] = False,
+    notify: NotifyOption = False,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Check the run history for drift against a baseline (for scheduled monitoring runs)."""
@@ -873,5 +1019,16 @@ def drift_cmd(
             "Monitoring needs fresh runs of the same prompt over time, e.g. daily:\n"
             "  regguard run -p <version> --limit <N> --cache refresh"
         )
+    if notify:
+        _print_notify(notify_drift(cfg, settings, report))
     if fail_on_drift and report.status is DriftStatus.DRIFT:
         raise typer.Exit(EXIT_GATE_FAILED)
+
+
+@notify_app.command("test")
+def notify_test() -> None:
+    """Send a test message to the configured Slack channel."""
+    result = notify_check(load_settings())
+    _print_notify(result)
+    if result.status is not NotifyStatus.SENT:
+        raise typer.Exit(EXIT_CONFIG_ERROR)

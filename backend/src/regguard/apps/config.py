@@ -5,6 +5,7 @@ The optional ``gate:`` block sets comparison thresholds (see ``core/gating.py``)
 """
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import Field, ValidationError
@@ -22,6 +23,20 @@ class JudgeConfig(FrozenModel):
     enabled: bool = True
 
 
+NotifyEvent = Literal["fail", "warn", "error", "drift"]
+
+
+class NotifyConfig(FrozenModel):
+    """Which events send a Slack message when a command runs with ``--notify``.
+
+    fail/warn: comparison verdicts; error: a run with status ERROR; drift: a new drift
+    episode (one message per episode, not one per run).
+    """
+
+    # Not called "on": YAML 1.1 (PyYAML) reads a bare `on` key as the boolean True.
+    events: tuple[NotifyEvent, ...] = ("fail", "error", "drift")
+
+
 class AppConfig(FrozenModel):
     name: str
     app: str  # registered AppSpec name
@@ -30,6 +45,7 @@ class AppConfig(FrozenModel):
     baselines_dir: Path = Path("baselines")
     judge: JudgeConfig | None = None
     gate: GateConfig = Field(default_factory=GateConfig)
+    notify: NotifyConfig = Field(default_factory=NotifyConfig)
 
 
 def load_app_config(path: Path) -> AppConfig:

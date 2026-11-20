@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Local storage (relative to the working directory; both are git-ignored)
     cache_dir: Path = Path(".regguard/cache")
     runs_dir: Path = Path("runs")
+    reports_dir: Path = Path("reports")
 
     # Integrations
     slack_webhook_url: SecretStr | None = None
