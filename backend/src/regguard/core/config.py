@@ -40,7 +40,10 @@ class Settings(BaseSettings):
 
     # Integrations
     slack_webhook_url: SecretStr | None = None
-    database_url: str = "sqlite+aiosqlite:///./.regguard/regguard.db"
+    # Run history (Phase 6). Local SQLite by default (git-ignored, created on first use);
+    # PostgreSQL e.g. postgresql+psycopg://user:pass@host/db (install the `postgres` extra).
+    database_url: str = "sqlite:///.regguard/regguard.db"
+    record_history: bool = True  # record every run and comparison in the history database
 
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"

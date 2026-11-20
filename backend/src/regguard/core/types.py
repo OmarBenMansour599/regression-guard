@@ -230,6 +230,40 @@ class MetricDelta(FrozenModel):
     gating: bool = False
 
 
+class DriftStatus(StrEnum):
+    OK = "ok"
+    DRIFT = "drift"
+    INSUFFICIENT = "insufficient"  # not enough comparable fresh runs to say anything
+
+
+class MetricDrift(FrozenModel):
+    metric: str
+    status: DriftStatus
+    reference: float  # the baseline's value
+    moving_average: float | None = None
+    delta: float | None = None  # moving average vs reference, in the threshold's unit
+    unit: str = "absolute"
+    runs: int = 0  # comparable fresh runs in the window
+    worse_streak: int = 0  # consecutive most-recent runs worse than the warn threshold
+    new_episode: bool = False  # DRIFT now, but not at the previous run: alert once
+    gating: bool = True  # False: shown, but does not make the report DRIFT (report-only metric)
+    values: list[float] = Field(default_factory=list)  # oldest -> newest, within the window
+    message: str = ""
+
+
+class DriftReport(FrozenModel):
+    app: str
+    baseline_run_id: str
+    baseline_name: str | None = None
+    status: DriftStatus
+    comparable_runs: int  # same app, prompt, dataset, cases and model as the baseline
+    fresh_runs: int  # ... of which made real API calls (no cache hits)
+    latest_run_id: str | None = None
+    metrics: list[MetricDrift] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
 class Comparison(FrozenModel):
     app: str
     baseline_run_id: str

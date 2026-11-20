@@ -57,12 +57,41 @@ def default_metric_thresholds() -> dict[str, MetricThreshold]:
     }
 
 
+DEFAULT_DRIFT_METRICS = (
+    "schema_valid",
+    "label_exact",
+    "summary_format",
+    "macro_f1",
+    "summary_judge",
+)
+
+
+class DriftConfig(FrozenModel):
+    """Drift over the history of comparable runs (technical plan section 8).
+
+    DRIFT when the moving average of the last ``window`` runs is worse than the baseline
+    by at least the metric's *warn* threshold AND each of the last ``consecutive`` runs is
+    worse too (so one bad day is not drift). Fewer than ``consecutive`` runs = insufficient.
+    """
+
+    window: int = Field(default=7, ge=2, le=100)
+    consecutive: int = Field(default=3, ge=1)
+    metrics: tuple[str, ...] = DEFAULT_DRIFT_METRICS
+
+    @model_validator(mode="after")
+    def _consecutive_fits(self) -> Self:
+        if self.consecutive > self.window:
+            raise ValueError("consecutive must not exceed window")
+        return self
+
+
 class GateConfig(FrozenModel):
     alpha: float = Field(default=0.10, gt=0.0, lt=1.0)
     min_regressed_cases: int = Field(default=3, ge=1)
     schema_valid_floor: float | None = Field(default=0.95, ge=0.0, le=1.0)
     critical_cases_must_not_regress: bool = True
     metrics: dict[str, MetricThreshold] = Field(default_factory=default_metric_thresholds)
+    drift: DriftConfig = Field(default_factory=DriftConfig)
 
     @field_validator("metrics", mode="after")
     @classmethod

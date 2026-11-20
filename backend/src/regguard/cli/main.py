@@ -14,13 +14,14 @@ import typer
 from regguard import __version__
 from regguard.apps.config import AppConfig, load_app_config
 from regguard.apps.registry import get_app
-from regguard.core.config import load_settings
+from regguard.core.config import Settings, load_settings
 from regguard.core.errors import ComparisonError, ConfigError, DataValidationError, ProviderError
 from regguard.core.logging import configure_logging
 from regguard.core.types import (
     CaseChange,
     CaseResult,
     Comparison,
+    DriftStatus,
     MetricDelta,
     MetricKind,
     RunResult,
@@ -41,6 +42,16 @@ from regguard.services.compare_service import (
     promote_baseline,
 )
 from regguard.services.datasets import load_app_dataset
+from regguard.services.drift_service import check_drift
+from regguard.services.history_service import (
+    HISTORY_ERRORS,
+    import_runs,
+    list_history,
+    metric_trend,
+    record_comparison,
+    record_run,
+    upgrade_database,
+)
 from regguard.services.invoke import InvokeResult, invoke_once
 from regguard.services.run_service import (
     BudgetExceededError,
@@ -75,6 +86,10 @@ runs_app = typer.Typer(help="Inspect stored evaluation runs.", no_args_is_help=T
 app.add_typer(runs_app, name="runs")
 baseline_app = typer.Typer(help="Pin and inspect baselines.", no_args_is_help=True)
 app.add_typer(baseline_app, name="baseline")
+history_app = typer.Typer(help="Browse the run history database.", no_args_is_help=True)
+app.add_typer(history_app, name="history")
+db_app = typer.Typer(help="Manage the history database schema.", no_args_is_help=True)
+app.add_typer(db_app, name="db")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", "-c", help="Path to the app's regguard.yaml.")
@@ -103,6 +118,11 @@ def main(
 def _fail(message: str, code: int) -> typer.Exit:
     typer.secho(f"Error: {message}", fg=typer.colors.RED, err=True)
     return typer.Exit(code)
+
+
+def _warn(message: str | None) -> None:
+    if message:
+        typer.secho(f"Warning: {message}", fg=typer.colors.YELLOW, err=True)
 
 
 def _load_config(path: Path) -> AppConfig:
@@ -454,6 +474,7 @@ def run(
         typer.echo(_case_row(case_result, result.meta.case_labels))
     _print_summary(result)
     typer.echo(f"\nSaved: {settings.runs_dir / result.meta.run_id / 'result.json'}")
+    _warn(record_run(settings, result))
     if result.status is RunStatus.ERROR:
         if baseline is not None:
             typer.secho("Comparison skipped: the run itself failed.", fg=typer.colors.RED)
@@ -461,7 +482,7 @@ def run(
     if baseline is not None:
         _compare_and_exit(
             cfg,
-            settings.runs_dir,
+            settings,
             result,
             baseline_name=baseline,
             against_run=None,
@@ -590,7 +611,7 @@ def _print_comparison(c: Comparison, *, show_all: bool) -> None:
 
 def _compare_and_exit(
     cfg: AppConfig,
-    runs_dir: Path,
+    settings: Settings,
     candidate: RunResult,
     *,
     baseline_name: str | None,
@@ -602,7 +623,7 @@ def _compare_and_exit(
     try:
         comparison, path = compare_with_baseline(
             cfg,
-            runs_dir,
+            settings.runs_dir,
             candidate,
             baseline_name=baseline_name,
             against_run=against_run,
@@ -612,6 +633,7 @@ def _compare_and_exit(
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
     _print_comparison(comparison, show_all=show_all)
     typer.echo(f"Saved: {path}")
+    _warn(record_comparison(settings, comparison, candidate))
     if comparison.verdict is Verdict.ERROR:
         raise typer.Exit(EXIT_PROVIDER_ERROR)
     if comparison.verdict is Verdict.FAIL or (fail_on_warn and comparison.verdict is Verdict.WARN):
@@ -641,7 +663,7 @@ def compare_cmd(
         raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
     _compare_and_exit(
         cfg,
-        settings.runs_dir,
+        settings,
         result,
         baseline_name=baseline,
         against_run=against,
@@ -719,3 +741,133 @@ def baseline_show(
     if h.note:
         typer.echo(f"  note: {h.note}")
     _print_summary(b.run)
+
+
+# --- history and drift ---------------------------------------------------------------------
+
+_HISTORY_ERRORS = HISTORY_ERRORS
+AppFilterOption = Annotated[
+    str | None, typer.Option("--app", help="Only runs of this app (regguard.yaml `name`).")
+]
+
+
+@db_app.command("upgrade")
+def db_upgrade() -> None:
+    """Create or upgrade the history database schema (needed for PostgreSQL)."""
+    settings = load_settings()
+    try:
+        before, after = upgrade_database(settings)
+    except _HISTORY_ERRORS as exc:
+        raise _fail(f"database upgrade failed: {exc}", EXIT_CONFIG_ERROR) from exc
+    if before == after:
+        typer.echo(f"Database already at revision {after}.")
+    else:
+        typer.secho(f"Database upgraded: {before or 'empty'} -> {after}", fg=typer.colors.GREEN)
+
+
+@history_app.command("import")
+def history_import() -> None:
+    """Add existing run files (runs/*/result.json) to the history database. Safe to repeat."""
+    settings = load_settings()
+    try:
+        summary = import_runs(settings)
+    except _HISTORY_ERRORS as exc:
+        raise _fail(f"import failed: {exc}", EXIT_CONFIG_ERROR) from exc
+    typer.echo(
+        f"Imported {summary.imported} run(s), {summary.skipped} already present, "
+        f"{summary.comparisons} comparison(s)."
+    )
+    for failure in summary.failed:
+        typer.secho(f"  skipped unreadable file: {failure}", fg=typer.colors.YELLOW)
+
+
+@history_app.command("list")
+def history_list(
+    app_name: AppFilterOption = None,
+    limit: Annotated[int, typer.Option(help="Show at most N runs.")] = 20,
+) -> None:
+    """Runs in the history database, newest first."""
+    settings = load_settings()
+    try:
+        records = list_history(settings, app=app_name, limit=limit)
+    except _HISTORY_ERRORS as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    if not records:
+        typer.echo("No runs in history yet. Run an evaluation, or: regguard history import")
+        return
+    for r in records:
+        fresh = "fresh" if r.cache_hits == 0 and r.api_calls > 0 else f"{r.cache_hits} cached"
+        typer.echo(
+            f"{r.run_id:<24} {r.started_at:%Y-%m-%d %H:%M}  {r.prompt_version:<6} "
+            f"{r.dataset_version:<6} {r.n_cases:>4} cases  {r.status:<9} {r.trigger:<8} "
+            f"{fresh:<10} {r.model}"
+        )
+
+
+@history_app.command("trend")
+def history_trend(
+    metric: Annotated[str, typer.Option("--metric", "-m", help="e.g. label_exact")],
+    app_name: AppFilterOption = None,
+    limit: Annotated[int, typer.Option(help="Last N runs.")] = 20,
+) -> None:
+    """One metric over the most recent runs, oldest first."""
+    settings = load_settings()
+    try:
+        series = metric_trend(settings, metric, app=app_name, limit=limit)
+    except _HISTORY_ERRORS as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    if not series:
+        typer.echo(f"No values for metric '{metric}' in history.")
+        return
+    top = max(abs(v) for _, v in series) or 1.0
+    for record, value in series:
+        bar = "#" * round(20 * abs(value) / top)
+        typer.echo(f"{record.run_id:<24} {record.prompt_version:<6} {value:>9.3f}  {bar}")
+
+
+@app.command("drift")
+def drift_cmd(
+    baseline: Annotated[
+        str, typer.Option("--baseline", "-b", help="Baseline whose values are the reference.")
+    ] = "main",
+    fail_on_drift: Annotated[
+        bool, typer.Option("--fail-on-drift", help="Exit with code 4 when drift is detected.")
+    ] = False,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Check the run history for drift against a baseline (for scheduled monitoring runs)."""
+    settings = load_settings()
+    cfg = _load_config(config)
+    try:
+        report = check_drift(cfg, settings, baseline_name=baseline)
+    except (DataValidationError, *_HISTORY_ERRORS) as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+    d = cfg.gate.drift
+    typer.echo(
+        f"Drift: {report.app} vs baseline '{baseline}' ({report.baseline_run_id})\n"
+        f"  {report.comparable_runs} comparable run(s), {report.fresh_runs} fresh; "
+        f"window {d.window}, alert after {d.consecutive} consecutive worse run(s)"
+    )
+    for note in report.notes:
+        typer.secho(f"  note: {note}", fg=typer.colors.YELLOW)
+    colors = {
+        DriftStatus.OK: typer.colors.GREEN,
+        DriftStatus.DRIFT: typer.colors.RED,
+        DriftStatus.INSUFFICIENT: typer.colors.YELLOW,
+    }
+    for m in report.metrics:
+        flag = "  [NEW EPISODE]" if m.new_episode else ""
+        typer.secho(
+            f"  {m.status.value.upper():<12} {m.metric:<20} {m.message}{flag}",
+            fg=colors[m.status],
+        )
+    typer.secho(
+        f"\nDRIFT STATUS: {report.status.value.upper()}", fg=colors[report.status], bold=True
+    )
+    if report.status is DriftStatus.INSUFFICIENT:
+        typer.echo(
+            "Monitoring needs fresh runs of the same prompt over time, e.g. daily:\n"
+            "  regguard run -p <version> --limit <N> --cache refresh"
+        )
+    if fail_on_drift and report.status is DriftStatus.DRIFT:
+        raise typer.Exit(EXIT_GATE_FAILED)

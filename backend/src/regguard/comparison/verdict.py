@@ -26,8 +26,11 @@ from regguard.comparison.diff import (
     paired_values,
 )
 from regguard.comparison.stats import mcnemar_one_sided, min_regressions_for_significance
+from regguard.comparison.thresholds import delta as _delta
+from regguard.comparison.thresholds import fmt_delta as _fmt_delta
+from regguard.comparison.thresholds import level as _level
 from regguard.core.errors import ComparisonError
-from regguard.core.gating import GateConfig, MetricThreshold
+from regguard.core.gating import GateConfig
 from regguard.core.types import (
     CaseChange,
     Comparison,
@@ -42,37 +45,8 @@ from regguard.core.types import (
 )
 from regguard.metrics.judge import JUDGE_METRIC
 
-_EPS = 1e-9  # so that e.g. exactly -3 points counts as crossing a -0.03 threshold
 _PASS_RATE = "pass_rate"  # noqa: S105 - a metric name, not a password
 _AGGREGATE_ONLY = ("latency_ms_p50", "latency_ms_p95", "macro_f1")
-
-
-def _crossed(delta: float, threshold: float | None) -> bool:
-    if threshold is None:
-        return False
-    return delta <= threshold + _EPS if threshold < 0 else delta >= threshold - _EPS
-
-
-def _level(delta: float | None, threshold: MetricThreshold | None) -> ThresholdLevel:
-    if delta is None or threshold is None:
-        return ThresholdLevel.OK
-    if _crossed(delta, threshold.critical):
-        return ThresholdLevel.CRITICAL
-    if _crossed(delta, threshold.warn):
-        return ThresholdLevel.WARN
-    return ThresholdLevel.OK
-
-
-def _delta(baseline: float, candidate: float, unit: str) -> float | None:
-    if unit == "absolute":
-        return candidate - baseline
-    return (candidate - baseline) / baseline if baseline else None
-
-
-def _fmt_delta(delta: float | None, unit: str) -> str:
-    if delta is None:
-        return "n/a"
-    return f"{delta * 100:+.1f} pts" if unit == "absolute" else f"{delta * 100:+.0f}%"
 
 
 def _fmt_value(value: float, kind: MetricKind) -> str:
