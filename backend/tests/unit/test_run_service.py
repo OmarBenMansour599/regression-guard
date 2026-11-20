@@ -6,7 +6,7 @@ import yaml
 
 from regguard.apps.config import AppConfig, load_app_config
 from regguard.core.config import Settings
-from regguard.core.errors import DataValidationError
+from regguard.core.errors import DataValidationError, ProviderError
 from regguard.core.types import RunStatus
 from regguard.providers.mock_provider import MockProvider
 from regguard.services.run_service import (
@@ -94,6 +94,30 @@ async def test_execute_saves_and_second_run_is_free(tmp_path: Path) -> None:
         second.meta.run_id,
         first.meta.run_id,
     ]
+
+
+async def test_run_stops_when_the_call_budget_is_spent_on_retries(tmp_path: Path) -> None:
+    """The real incident: 12 planned calls became 36 because of 503 retries."""
+    config = _config(tmp_path)
+    settings = Settings(
+        llm_provider="mock",
+        cache_dir=tmp_path / "cache",
+        runs_dir=tmp_path / "runs",
+        requests_per_minute=10_000,
+        max_retries=4,
+    )
+    overloaded = ProviderError(  # Retry-After: 0 -> retries happen instantly in the test
+        "HTTP 503: high demand", retryable=True, status_code=503, retry_after_s=0.0
+    )
+    prepared = prepare_run(
+        config, RunOptions(prompt_version="v1", max_requests=15), settings, provider_name="mock"
+    )
+    check_budget(prepared)  # 12 planned calls fit within 15
+    result = await execute_prepared(prepared, MockProvider(lambda _: overloaded), settings)
+    assert result.meta.execution.api_calls == 15  # never more than the cap
+    assert result.status is RunStatus.ERROR
+    assert result.error is not None
+    assert "budget exhausted" in result.error
 
 
 def test_empty_selection_is_refused(tmp_path: Path) -> None:

@@ -6,7 +6,7 @@ import pytest
 
 from regguard.core.errors import ProviderError
 from regguard.evaluation.cache import CacheMode, ResponseCache
-from regguard.evaluation.executor import Executor, RateLimiter, RetryPolicy
+from regguard.evaluation.executor import CallBudget, Executor, RateLimiter, RetryPolicy
 from regguard.providers.base import CompletionRequest, Message
 from regguard.providers.mock_provider import MockProvider
 
@@ -102,6 +102,42 @@ async def test_rate_limit_backoff_is_long_with_minimum(tmp_path: Path) -> None:
     # equal jitter on 5s base, 60s cap: [2.5,5], [5,10], [10,20], [20,40]
     for delay, (low, high) in zip(t.sleeps, [(2.5, 5), (5, 10), (10, 20), (20, 40)], strict=True):
         assert low <= delay <= high
+
+
+async def test_call_budget_caps_retries_and_aborts(tmp_path: Path) -> None:
+    budget = CallBudget(3)
+    provider = scripted(retryable())  # always 503
+    executor, _ = make_executor(provider, tmp_path, policy=RetryPolicy(max_retries=10))
+    executor._budget = budget
+    outcome = await executor.call(REQUEST)
+    assert outcome.completion is None
+    assert executor.api_calls == 3  # not 11: the budget stopped the retries
+    assert budget.spent == 3
+    assert executor.aborted_reason is not None
+    assert "budget exhausted (3 calls" in executor.aborted_reason
+    assert outcome.error is not None
+    assert outcome.error.type == "aborted"
+
+
+async def test_call_budget_is_shared_and_cache_hits_are_free(tmp_path: Path) -> None:
+    budget = CallBudget(2)
+    first, _ = make_executor(scripted("ok"), tmp_path, mode=CacheMode.READ_WRITE)
+    second, _ = make_executor(scripted("ok"), tmp_path, mode=CacheMode.READ_WRITE)
+    first._budget = second._budget = budget
+    await first.call(REQUEST)  # spends 1
+    await first.call(REQUEST)  # cache hit: free
+    other = CompletionRequest(model="m", messages=(Message(role="user", content="other"),))
+    await second.call(other)  # spends the 2nd
+    third = CompletionRequest(model="m", messages=(Message(role="user", content="third"),))
+    outcome = await second.call(third)
+    assert budget.spent == 2
+    assert outcome.completion is None
+    assert second.aborted_reason is not None
+
+
+def test_call_budget_rejects_negative_limit() -> None:
+    with pytest.raises(ValueError, match=">= 0"):
+        CallBudget(-1)
 
 
 async def test_retry_after_is_honored(tmp_path: Path) -> None:

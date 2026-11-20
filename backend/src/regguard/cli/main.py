@@ -451,6 +451,10 @@ def run(
                 f"{prepared.judge_calls - prepared.uncached_judge_calls} cached. "
                 f"Model: {prepared.judge_prompt.model.model}"
             )
+        typer.echo(
+            f"Budget:  {prepared.uncached_calls} API call(s) needed, "
+            f"hard cap {options.max_requests} including retries (--max-requests)"
+        )
         check_budget(prepared)
         if baseline is not None:
             ensure_baseline_exists(cfg, baseline)  # fail before spending any API call

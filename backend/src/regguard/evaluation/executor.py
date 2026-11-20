@@ -46,6 +46,26 @@ class CallOutcome:
     attempts: int
 
 
+class CallBudget:
+    """Hard cap on real provider calls for a whole run, retries included.
+
+    One instance is shared by every executor of a run (app and judge), because they spend
+    the same API key's quota. Cache hits are free and never spend from it.
+    """
+
+    def __init__(self, limit: int) -> None:
+        if limit < 0:
+            raise ValueError("limit must be >= 0")
+        self.limit = limit
+        self.spent = 0
+
+    def try_spend(self) -> bool:
+        if self.spent >= self.limit:
+            return False
+        self.spent += 1
+        return True
+
+
 class RateLimiter:
     """Spaces request starts evenly: at most ``per_minute`` starts per 60 s."""
 
@@ -91,8 +111,10 @@ class Executor:
         policy: RetryPolicy | None = None,
         sleep: Sleep = asyncio.sleep,
         rng: random.Random | None = None,
+        budget: CallBudget | None = None,
     ) -> None:
         self._provider = provider
+        self._budget = budget
         self._cache = cache
         self._limiter = limiter
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -150,6 +172,12 @@ class Executor:
             attempt = 0
             while True:
                 if self.aborted_reason is not None:
+                    return self._aborted_outcome(attempt)
+                if self._budget is not None and not self._budget.try_spend():
+                    self._abort(
+                        f"API call budget exhausted ({self._budget.limit} calls, "
+                        "retries included); raise --max-requests or retry later"
+                    )
                     return self._aborted_outcome(attempt)
                 await self._limiter.acquire()
                 self.api_calls += 1

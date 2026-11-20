@@ -13,7 +13,7 @@ from regguard.core.errors import ConfigError, DataValidationError, RegGuardError
 from regguard.core.types import CaseSelection, RunResult, Trigger
 from regguard.datasets.select import select_cases
 from regguard.evaluation.cache import CacheMode, ResponseCache
-from regguard.evaluation.executor import Executor, RateLimiter, RetryPolicy
+from regguard.evaluation.executor import CallBudget, Executor, RateLimiter, RetryPolicy
 from regguard.evaluation.judge import JudgeScorer, judge_request
 from regguard.evaluation.runner import ProgressCallback, RunPlan, execute_run
 from regguard.metrics.judge import CANDIDATE_VAR, REFERENCE_VAR
@@ -228,12 +228,15 @@ async def execute_prepared(
     # One limiter for both executors: app and judge calls share the same API key and quota.
     limiter = RateLimiter(settings.requests_per_minute)
     policy = RetryPolicy(max_retries=settings.max_retries)
+    # Hard cap on real calls (app + judge, retries included): --max-requests is a promise.
+    budget = CallBudget(prepared.options.max_requests)
     executor = Executor(
         provider,
         cache=prepared.cache,
         limiter=limiter,
         concurrency=settings.max_concurrency,
         policy=policy,
+        budget=budget,
     )
     judge: JudgeScorer | None = None
     summary_field = prepared.plan.spec.summary_field
@@ -244,6 +247,7 @@ async def execute_prepared(
             limiter=limiter,
             concurrency=settings.max_concurrency,
             policy=policy,
+            budget=budget,
         )
         judge = JudgeScorer(prepared.judge_prompt, judge_executor, summary_field)
     try:
