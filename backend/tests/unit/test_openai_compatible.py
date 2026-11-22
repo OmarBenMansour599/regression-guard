@@ -173,3 +173,26 @@ async def test_api_key_not_in_error_messages() -> None:
     with pytest.raises(ProviderError) as info:
         await provider.complete(_request())
     assert "k-123" not in str(info.value)
+
+
+async def test_unsendable_header_is_fatal_and_never_quotes_the_key() -> None:
+    """httpx quotes the bad header (with the key) in its message: found in a real CI run."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.LocalProtocolError("Illegal header value b'Bearer k-123\\n'")
+
+    with pytest.raises(ProviderError) as info:
+        await _provider(handler).complete(_request())
+    assert info.value.fatal and not info.value.retryable
+    assert "k-123" not in str(info.value)
+    assert "spaces or line breaks" in str(info.value)
+
+
+async def test_transport_error_text_is_redacted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("failed while sending Bearer k-123")
+
+    with pytest.raises(ProviderError) as info:
+        await _provider(handler).complete(_request())
+    assert info.value.retryable and not info.value.fatal
+    assert str(info.value) == "transport error: failed while sending Bearer ***"

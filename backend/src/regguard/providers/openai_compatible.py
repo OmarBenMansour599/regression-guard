@@ -29,11 +29,16 @@ class OpenAICompatibleProvider:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         headers = {"X-Title": "RegressionGuard"}
-        if api_key is not None:
-            headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
+        self._secret = api_key.get_secret_value() if api_key is not None else None
+        if self._secret:
+            headers["Authorization"] = f"Bearer {self._secret}"
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(base_url=base_url, timeout=timeout_s)
         self._client.headers.update(headers)
+
+    def _redact(self, text: str) -> str:
+        """httpx error texts can quote request headers, i.e. the API key: never keep it."""
+        return text.replace(self._secret, "***") if self._secret else text
 
     async def complete(self, request: CompletionRequest) -> Completion:
         payload = _build_payload(request)
@@ -42,8 +47,17 @@ class OpenAICompatibleProvider:
             response = await self._client.post("/chat/completions", json=payload)
         except httpx.TimeoutException as exc:
             raise ProviderError("request timed out", retryable=True) from exc
+        except httpx.LocalProtocolError as exc:
+            # Raised before sending, e.g. a key with a line break: its text quotes the header.
+            raise ProviderError(
+                "the request could not be sent: invalid header value "
+                "(check REGGUARD_LLM_API_KEY for spaces or line breaks)",
+                fatal=True,
+            ) from exc
         except httpx.TransportError as exc:
-            raise ProviderError(f"transport error: {exc}", retryable=True) from exc
+            raise ProviderError(
+                f"transport error: {self._redact(str(exc))}", retryable=True
+            ) from exc
         latency_ms = (time.perf_counter() - start) * 1000
 
         if response.status_code >= 400:

@@ -179,6 +179,18 @@ async def test_auth_error_aborts_whole_run(tmp_path: Path) -> None:
     assert len(provider.calls) == 1  # no further calls after abort
 
 
+async def test_fatal_error_aborts_after_one_call(tmp_path: Path) -> None:
+    """A key that cannot be sent fails every call: stop at once instead of burning the budget."""
+    provider = scripted(ProviderError("bad header", fatal=True))
+    executor, _ = make_executor(provider, tmp_path)
+    first = await executor.call(REQUEST)
+    second = await executor.call(REQUEST)
+    assert first.error is not None and first.error.message == "bad header"
+    assert executor.aborted_reason == "bad header"
+    assert second.error is not None and second.error.type == "aborted"
+    assert len(provider.calls) == 1
+
+
 async def test_consecutive_failures_abort(tmp_path: Path) -> None:
     provider = scripted(ProviderError("bad", retryable=False, status_code=400))
     policy = RetryPolicy(max_retries=0, abort_after_consecutive_failures=3)

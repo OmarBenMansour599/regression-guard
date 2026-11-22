@@ -33,6 +33,28 @@ def test_secret_never_appears_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "super-secret-value" not in str(s)
 
 
+@pytest.mark.parametrize("name", ["REGGUARD_LLM_API_KEY", "REGGUARD_SLACK_WEBHOOK_URL"])
+def test_secrets_lose_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    """A secret pasted with a trailing line break broke every CI call (2026-11-22)."""
+    monkeypatch.setenv(name, "  sk-or-v1-abc\n")
+    secret = getattr(load_settings(), name.removeprefix("REGGUARD_").lower())
+    assert secret.get_secret_value() == "sk-or-v1-abc"
+
+
+def test_blank_secret_means_not_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REGGUARD_LLM_API_KEY", " \n")
+    assert load_settings().llm_api_key is None
+
+
+def test_secret_with_inner_whitespace_is_refused_without_echo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REGGUARD_LLM_API_KEY", "sk-or-v1-abc\nsk-or-v1-def")
+    with pytest.raises(ConfigError, match="llm_api_key") as info:
+        load_settings()
+    assert "sk-or" not in str(info.value)
+
+
 def test_invalid_value_raises_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REGGUARD_MAX_CONCURRENCY", "0")
     with pytest.raises(ConfigError, match="max_concurrency"):

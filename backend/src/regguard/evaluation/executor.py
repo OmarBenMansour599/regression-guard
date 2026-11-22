@@ -188,6 +188,9 @@ class Executor:
                     if exc.status_code in _AUTH_STATUSES:
                         self._abort(f"authentication failed: {exc}")
                         return self._failure(exc, attempt)
+                    if exc.fatal:  # every other call would fail the same way
+                        self._abort(str(exc))
+                        return self._failure(exc, attempt)
                     if not exc.retryable or attempt > self._policy.max_retries:
                         return self._failure(exc, attempt)
                     delay = (

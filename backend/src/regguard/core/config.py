@@ -8,7 +8,7 @@ because changing them is exactly what we want to detect and review.
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, ValidationError
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from regguard.core.errors import ConfigError
@@ -49,6 +49,25 @@ class Settings(BaseSettings):
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["console", "json"] = "console"
+
+    @field_validator("llm_api_key", "slack_webhook_url", mode="before")
+    @classmethod
+    def _clean_secret(cls, value: object) -> object:
+        """Pasted secrets often end with a line break or space (e.g. GitHub secrets).
+
+        Leading/trailing whitespace is removed; whitespace inside is an error. The message
+        never includes the value.
+        """
+        if isinstance(value, SecretStr):
+            value = value.get_secret_value()
+        if not isinstance(value, str):
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if any(ch.isspace() for ch in cleaned):
+            raise ValueError("contains spaces or line breaks; paste the secret again")
+        return cleaned
 
 
 def find_dotenv(start: Path | None = None) -> Path | None:
