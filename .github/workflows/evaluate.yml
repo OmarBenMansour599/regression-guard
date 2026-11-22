@@ -1,0 +1,174 @@
+# RegressionGuard PR gate (Phase 9, ADR 0006).
+# On every pull request: find which prompt versions changed, evaluate them on the real LLM
+# against the pinned baseline, post one PR comment (updated on each push), and fail the
+# check on FAIL or ERROR. Make "RegressionGuard gate" a required check (docs/ci-setup.md).
+#
+# Security:
+# - `pull_request` only, never `pull_request_target`: PR code never runs with write tokens
+#   on a fork's behalf. Fork PRs get no secrets: they cannot be evaluated and the gate fails
+#   closed if they touch a prompt (a maintainer re-runs it with workflow_dispatch).
+# - Values that come from the PR (file names, prompt versions) reach the shell only through
+#   environment variables, never through ${{ }} inside `run:` scripts.
+# - Third-party actions are pinned to full commit SHAs (tag in the comment).
+name: RegressionGuard gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt version to evaluate against the baseline (e.g. v2)"
+        required: true
+      judge:
+        description: "Also grade summaries with the LLM judge (about twice the API calls)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regguard-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CONFIG: ../examples/support-email-classifier/regguard.yaml
+  PROMPTS_PATH: examples/support-email-classifier/prompts/classify
+  BASELINE: main
+  REGGUARD_RECORD_HISTORY: "false" # PR runs are throwaway; history comes from the monitor
+
+jobs:
+  gate:
+    name: RegressionGuard gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the PR comment
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff needs the base commit
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+
+      - name: Plan (which prompts changed?)
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INPUT_PROMPT: ${{ inputs.prompt }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            printf '%s/%s.yaml\n' "$PROMPTS_PATH" "$INPUT_PROMPT" > changed.txt
+          else
+            git diff --name-only "$BASE_SHA...$HEAD_SHA" > changed.txt
+          fi
+          echo "Changed files:"; sed 's/^/  /' changed.txt
+          uv run python -m regguard ci plan --changed-files changed.txt --baseline "$BASELINE" \
+            --github-output "$GITHUB_OUTPUT" -c "$CONFIG"
+
+      # Answers from earlier runs (this PR or main): re-pushing re-runs only what changed.
+      - name: Restore the response cache
+        if: steps.plan.outputs.evaluate == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.regguard/cache
+          key: regguard-responses-${{ github.run_id }}
+          restore-keys: regguard-responses-
+
+      - name: Evaluate on the real LLM
+        if: steps.plan.outputs.evaluate == 'true'
+        env:
+          REGGUARD_LLM_API_KEY: ${{ secrets.REGGUARD_LLM_API_KEY }}
+          PROMPTS: ${{ steps.plan.outputs.prompts }}
+          JUDGE: ${{ inputs.judge && '--judge' || '--no-judge' }}
+          MAX_REQUESTS: ${{ inputs.judge && '50' || '30' }}
+        run: |
+          if [ -z "$REGGUARD_LLM_API_KEY" ]; then
+            echo "::error::No REGGUARD_LLM_API_KEY secret (fork PR, or not set up: docs/ci-setup.md). Nothing was evaluated."
+            exit 0
+          fi
+          for prompt in $PROMPTS; do
+            echo "::group::Evaluate $prompt"
+            code=0
+            uv run python -m regguard run -p "$prompt" --baseline "$BASELINE" --cases-from-baseline \
+              "$JUDGE" --max-requests "$MAX_REQUESTS" --report -c "$CONFIG" || code=$?
+            echo "::endgroup::"
+            echo "$prompt: exit code $code"
+          done
+
+      - name: Save the response cache
+        if: always() && steps.plan.outputs.evaluate == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.regguard/cache
+          key: regguard-responses-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Gate verdict
+        id: gate
+        if: always() && steps.plan.outcome == 'success'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          code=0
+          uv run python -m regguard ci summarize --details-url "$RUN_URL" -c "$CONFIG" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          cat pr-comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML reports
+        if: always() && steps.plan.outputs.evaluate == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: regressionguard-reports
+          path: |
+            backend/reports/
+            backend/runs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Edits the gate's own comment (found by its hidden marker, authored by this bot) so a
+      # PR has one comment, not one per push. Comments only once the PR touches something
+      # relevant. Fork PRs have a read-only token: the comment is skipped, the check is not.
+      - name: Post or update the PR comment
+        if: always() && github.event_name == 'pull_request' && steps.gate.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          RELEVANT: ${{ steps.plan.outputs.relevant }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq \
+            '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- regressionguard:pr-gate -->"))) | .id' \
+            | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@pr-comment.md > /dev/null
+            echo "Updated comment $id"
+          elif [ "$RELEVANT" = "true" ]; then
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file pr-comment.md
+          else
+            echo "Nothing relevant changed: no comment."
+          fi
+
+      - name: Enforce the verdict
+        if: always() && steps.gate.outcome == 'success'
+        env:
+          CODE: ${{ steps.gate.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) echo "Gate passed." ;;
+            4) echo "::error::RegressionGuard gate FAILED: see the PR comment or the job summary."; exit 4 ;;
+            3) echo "::error::No quality verdict: a run failed for technical reasons. Re-run this job."; exit 3 ;;
+            *) echo "::error::regguard ci summarize failed (exit $CODE)."; exit 1 ;;
+          esac

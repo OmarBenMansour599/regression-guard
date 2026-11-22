@@ -36,6 +36,14 @@ from regguard.datasets.models import Dataset
 from regguard.evaluation.cache import CacheMode
 from regguard.prompts.loader import discover_prompts, load_prompt_version
 from regguard.providers.factory import build_provider
+from regguard.services.ci_service import (
+    CiPlan,
+    collect_outcomes,
+    find_repo_root,
+    gate_verdict,
+    plan_ci,
+    render_pr_comment,
+)
 from regguard.services.compare_service import (
     compare_with_baseline,
     ensure_baseline_exists,
@@ -102,6 +110,10 @@ db_app = typer.Typer(help="Manage the history database schema.", no_args_is_help
 app.add_typer(db_app, name="db")
 notify_app = typer.Typer(help="Slack notifications.", no_args_is_help=True)
 app.add_typer(notify_app, name="notify")
+ci_app = typer.Typer(
+    help="Pull request gate helpers (used by GitHub Actions).", no_args_is_help=True
+)
+app.add_typer(ci_app, name="ci")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", "-c", help="Path to the app's regguard.yaml.")
@@ -434,25 +446,40 @@ def run(
     ] = True,
     report: ReportOption = False,
     notify: NotifyOption = False,
+    cases_from_baseline: Annotated[
+        bool,
+        typer.Option(
+            "--cases-from-baseline",
+            help="Run exactly the baseline's cases (needs --baseline; used by CI).",
+        ),
+    ] = False,
     config: ConfigOption = Path("regguard.yaml"),
 ) -> None:
     """Evaluate a prompt version against the golden dataset and save the result."""
-    options = RunOptions(
-        prompt_version=prompt,
-        dataset_version=dataset_version,
-        limit=limit,
-        ids=ids or (),
-        tags=tags or (),
-        seed=seed,
-        n_samples=samples,
-        cache_mode=cache,
-        max_requests=max_requests,
-        judge=judge,
-    )
+    if cases_from_baseline and (baseline is None or limit is not None or ids or tags):
+        raise _fail(
+            "--cases-from-baseline needs --baseline and excludes --limit, --id and --tag",
+            EXIT_CONFIG_ERROR,
+        )
     try:
         settings = load_settings()
         configure_logging(settings.log_level, settings.log_format)
         cfg = load_app_config(config)
+        if cases_from_baseline and baseline is not None:
+            pinned = load_baseline(cfg.baselines_dir, baseline).run
+            ids = sorted({c.case_id for c in pinned.cases})
+        options = RunOptions(
+            prompt_version=prompt,
+            dataset_version=dataset_version,
+            limit=limit,
+            ids=ids or (),
+            tags=tags or (),
+            seed=seed,
+            n_samples=samples,
+            cache_mode=cache,
+            max_requests=max_requests,
+            judge=judge,
+        )
         spec = get_app(cfg.app)
         judge_prompt = load_judge_prompt(cfg, spec) if judge else None
         provider = build_provider(settings, mock_response=mock_responder(spec, judge_prompt))
@@ -1032,3 +1059,102 @@ def notify_test() -> None:
     _print_notify(result)
     if result.status is not NotifyStatus.SENT:
         raise typer.Exit(EXIT_CONFIG_ERROR)
+
+
+# --- CI gate (Phase 9) -------------------------------------------------------------------
+
+
+def _read_lines(source: Path) -> list[str]:
+    text = typer.get_text_stream("stdin").read() if str(source) == "-" else None
+    if text is None:
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise _fail(f"cannot read {source}: {exc}", EXIT_CONFIG_ERROR) from exc
+    # Windows PowerShell 5.1 writes a byte-order mark: it would hide the first path.
+    text = text.removeprefix("﻿")
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+@ci_app.command("plan")
+def ci_plan(
+    changed_files: Annotated[
+        Path,
+        typer.Option(help="File listing changed paths, one per line ('-' = stdin)."),
+    ],
+    out: Annotated[Path, typer.Option(help="Write the plan as JSON here.")] = Path("ci-plan.json"),
+    baseline: Annotated[str, typer.Option("--baseline", "-b", help="Baseline name.")] = "main",
+    repo_root: Annotated[
+        Path | None,
+        typer.Option(help="Root the changed paths are relative to (default: git root)."),
+    ] = None,
+    github_output: Annotated[
+        Path | None, typer.Option(help="Append step outputs here (pass $GITHUB_OUTPUT).")
+    ] = None,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Decide which prompt versions a pull request needs evaluated (no API calls)."""
+    cfg = _load_config(config)
+    root = repo_root if repo_root is not None else find_repo_root(config.parent)
+    plan = plan_ci(cfg, config, _read_lines(changed_files), repo_root=root, baseline=baseline)
+    out.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    if plan.blocking:
+        typer.secho(f"Blocked: {plan.blocking}", fg=typer.colors.RED)
+    elif plan.evaluate:
+        typer.echo(f"Evaluate: {' '.join(plan.prompt_versions)} against baseline '{baseline}'")
+    else:
+        typer.echo("Nothing to evaluate.")
+    for note in plan.notes:
+        typer.echo(f"  note: {note}")
+    if github_output is not None:
+        with github_output.open("a", encoding="utf-8") as fh:
+            fh.write(f"evaluate={str(plan.evaluate).lower()}\n")
+            fh.write(f"relevant={str(plan.relevant).lower()}\n")
+            fh.write(f"prompts={' '.join(plan.prompt_versions)}\n")
+
+
+@ci_app.command("baseline-prompt")
+def ci_baseline_prompt(
+    baseline: Annotated[str, typer.Option("--baseline", "-b", help="Baseline name.")] = "main",
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Print the prompt version of a baseline (the daily monitor re-runs it)."""
+    cfg = _load_config(config)
+    try:
+        typer.echo(load_baseline(cfg.baselines_dir, baseline).run.meta.prompt_version)
+    except DataValidationError as exc:
+        raise _fail(str(exc), EXIT_CONFIG_ERROR) from exc
+
+
+@ci_app.command("summarize")
+def ci_summarize(
+    plan_file: Annotated[Path, typer.Option("--plan", help="Plan written by `ci plan`.")] = Path(
+        "ci-plan.json"
+    ),
+    out: Annotated[Path, typer.Option(help="Write the PR comment here.")] = Path("pr-comment.md"),
+    details_url: Annotated[
+        str | None, typer.Option(help="Link to the workflow run (HTML report artifacts).")
+    ] = None,
+    fail_on_warn: FailOnWarnOption = False,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Combine this job's runs into one gate verdict and PR comment; exit with its code."""
+    settings = load_settings()
+    cfg = _load_config(config)
+    try:
+        plan = CiPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise _fail(f"cannot read the CI plan {plan_file}: {exc}", EXIT_CONFIG_ERROR) from exc
+    outcomes = collect_outcomes(cfg, settings.runs_dir, plan)
+    verdict = gate_verdict(plan, outcomes)
+    out.write_text(
+        render_pr_comment(plan, outcomes, verdict, details_url=details_url), encoding="utf-8"
+    )
+    label = verdict.value.upper() if verdict else "NOTHING TO EVALUATE"
+    color = _VERDICT_COLORS[verdict] if verdict else typer.colors.GREEN
+    typer.secho(f"GATE: {label}", fg=color, bold=True)
+    typer.echo(f"Comment: {out}")
+    if verdict is Verdict.FAIL or (fail_on_warn and verdict is Verdict.WARN):
+        raise typer.Exit(EXIT_GATE_FAILED)
+    if verdict is Verdict.ERROR:
+        raise typer.Exit(EXIT_PROVIDER_ERROR)

@@ -1,0 +1,102 @@
+# RegressionGuard daily monitor (Phase 9, ADR 0006).
+# Re-runs the baseline's prompt with fresh calls (no cache), records it in the history
+# database, and checks drift. The history database survives between runs in the Actions
+# cache; if GitHub evicts it, drift simply reports INSUFFICIENT again (safe, never "OK").
+# Slack messages go out only if the REGGUARD_SLACK_WEBHOOK_URL secret is set.
+name: RegressionGuard monitor
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, 06:17 UTC (off the hour: scheduled jobs queue at :00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regguard-monitor
+  cancel-in-progress: false
+
+env:
+  CONFIG: ../examples/support-email-classifier/regguard.yaml
+  BASELINE: main
+
+jobs:
+  monitor:
+    name: Fresh run and drift check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      REGGUARD_LLM_API_KEY: ${{ secrets.REGGUARD_LLM_API_KEY }}
+      REGGUARD_SLACK_WEBHOOK_URL: ${{ secrets.REGGUARD_SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+
+      - name: Restore the history database
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.regguard
+          key: regguard-monitor-${{ github.run_id }}
+          restore-keys: regguard-monitor-
+
+      - name: Fresh run of the baseline prompt
+        id: run
+        run: |
+          if [ -z "$REGGUARD_LLM_API_KEY" ]; then
+            echo "::error::No REGGUARD_LLM_API_KEY secret (docs/ci-setup.md)."
+            exit 2
+          fi
+          prompt=$(uv run python -m regguard ci baseline-prompt --baseline "$BASELINE" -c "$CONFIG")
+          code=0
+          uv run python -m regguard run -p "$prompt" --baseline "$BASELINE" --cases-from-baseline \
+            --no-judge --cache refresh --max-requests 30 --report --notify -c "$CONFIG" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Drift check
+        id: drift
+        if: steps.run.outcome == 'success'
+        run: |
+          code=0
+          uv run python -m regguard drift --baseline "$BASELINE" --fail-on-drift --notify \
+            -c "$CONFIG" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Save the history database
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/.regguard
+          key: regguard-monitor-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: regressionguard-monitor
+          path: backend/reports/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Red job = something to look at: the run failed (ERROR), failed the gate, or drifts.
+      - name: Result
+        if: always() && steps.run.outcome == 'success'
+        env:
+          RUN_CODE: ${{ steps.run.outputs.code }}
+          DRIFT_CODE: ${{ steps.drift.outputs.code }}
+        run: |
+          echo "run exit code: $RUN_CODE, drift exit code: ${DRIFT_CODE:-skipped}"
+          [ "$RUN_CODE" = "0" ] || exit "$RUN_CODE"
+          [ "${DRIFT_CODE:-0}" = "0" ] || exit "$DRIFT_CODE"

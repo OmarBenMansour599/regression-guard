@@ -1,0 +1,949 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------------------
+% Packages (all standard in MiKTeX / TeX Live)
+% ---------------------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{fancyvrb}
+\usepackage[hyphens]{url}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\renewcommand{\arraystretch}{1.25}
+\setlist{itemsep=2pt,topsep=4pt}
+
+% \code{...}: monospace text that can contain _ and breaks at / and -
+\newcommand{\code}[1]{\nolinkurl{#1}}
+% Highlighted "key idea" box
+\newcommand{\keyidea}[1]{%
+  \par\smallskip\noindent\fcolorbox{NavyBlue}{NavyBlue!6}{%
+  \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{#1}}\par\smallskip}
+\newcommand{\new}{\textbf{new}}
+\newcommand{\minus}{$-$}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{RegressionGuard: Progress Report}
+\fancyhead[R]{Phases 5 to 7}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+% ---------------------------------------------------------------------------
+\begin{titlepage}
+  \centering
+  \vspace*{3cm}
+  {\Huge\bfseries RegressionGuard\par}
+  \vspace{0.6cm}
+  {\Large Model Regression Detection System for LLM Applications\par}
+  \vspace{1.2cm}
+  {\Large Progress Report: Phases 5 to 7\par}
+  \vspace{2cm}
+  {\large Omar Ben Mansour\par}
+  \vspace{0.4cm}
+  {\large 12 to 20 November 2026\par}
+  \vfill
+  \keyidea{\textbf{Status.} Comparison and regression detection, the AI judge, run history
+  and drift detection, reports and Slack notifications are complete and verified on a real AI
+  model. Next step: Phase 9, the automatic gate in GitHub, then Phase 8 (web API and
+  dashboard).\\[4pt]
+  Previous report: \code{docs/report/progress-report.pdf} (Phases 0 to 4).}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ===========================================================================
+\section{The project in one page}
+
+\subsection{Reminder: the problem and the solution}
+
+An LLM application is controlled by a \textbf{prompt} and a \textbf{choice of model}.
+Changing either can silently make the application worse. RegressionGuard is an
+\textbf{automated testing system for LLM behaviour}: it runs the application on a
+human-checked answer key (the \emph{golden dataset}), scores the answers, compares them with
+a trusted earlier version (the \emph{baseline}), and raises an alarm when quality drops.
+
+The example application is still the \textbf{customer-support email classifier}: it reads a
+customer email and returns a \textbf{category} (\code{billing}, \code{technical},
+\code{account}, \code{general}) and a \textbf{one-sentence summary}.
+
+\subsection{Where we were at the end of Phase 4}
+
+The system could \textbf{run} an evaluation: call the AI reliably, score every answer, and
+save a complete, traceable result file. It could not yet say whether a new version was
+\textbf{better or worse} than before. That was the missing heart of the project.
+
+\subsection{What Phases 5 to 7 added}
+
+\begin{longtable}{@{}p{0.07\linewidth}p{0.27\linewidth}p{0.60\linewidth}@{}}
+\toprule
+\textbf{Phase} & \textbf{Question it answers} & \textbf{In one sentence} \\
+\midrule
+\endhead
+\textbf{5a} & ``Did my change make things worse?'' & Compares a new run with a pinned baseline, case by case, and gives a verdict: PASS, WARN, FAIL or ERROR. It only fails a change when the drop is both large and unlikely to be chance. \\
+\textbf{5b} & ``Are the summaries still good?'' & Adds summary checks: a format rule, a word-overlap score, and a second AI acting as a \textbf{judge} that grades each summary from 1 to 5. Also adds precision, recall and F1 per category. \\
+\textbf{6} & ``Is quality slowly sliding when nobody changed anything?'' & Records every run in a \textbf{history database} and detects \textbf{drift}: a slow, repeated decline over many runs of the same prompt and model. \\
+\textbf{7} & ``How does the team find out?'' & Produces a readable \textbf{HTML report}, a short \textbf{Markdown summary} (ready for a GitHub comment), and a \textbf{Slack message} when something goes wrong. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Where we are now}
+
+\keyidea{The complete regression-detection loop works on the command line, and it has been
+verified on the real AI. When the deliberately weak prompt \code{v2} is compared with the
+trusted \code{v1}, RegressionGuard answers \textbf{FAIL}. It names the 4 emails that broke and
+explains why: the model wrapped its answer in an extra pair of brackets, so the program reading
+it could not use it. It writes a report anyone can open, and it can post the alert to Slack.}
+
+What is still missing is \textbf{automation}: today a person types the commands. Phase 9 will
+make GitHub run them on every pull request that changes a prompt and block the merge on FAIL.
+
+% ===========================================================================
+\section{Key words explained (new in these phases)}
+
+The words from the first report (LLM, prompt, token, golden dataset, baseline, cache, CI\ldots)
+are not repeated here.
+
+\begin{longtable}{@{}p{0.27\linewidth}p{0.68\linewidth}@{}}
+\toprule
+\textbf{Term} & \textbf{Simple meaning} \\
+\midrule
+\endhead
+Comparison & Putting a new run (the \emph{candidate}) next to the baseline, case by case and metric by metric. \\
+Candidate & The new run being judged (for example, prompt \code{v2}). \\
+Promote (a baseline) & Declaring a run ``the trusted reference''. Done on purpose, with a command, never automatically. \\
+Verdict & The final answer of a comparison: \textbf{PASS} (no problem), \textbf{WARN} (a drop worth a look), \textbf{FAIL} (a real regression: block the change), \textbf{ERROR} (the run itself failed for technical reasons, so no quality judgment is possible). \\
+Exit code & The number a command returns when it finishes. Automated systems such as GitHub read it: 0 = fine, 4 = gate failed. \\
+Gate & The set of rules that turns measurements into a verdict (``quality gate''). \\
+Threshold & How big a drop must be before it matters, for example ``warn at \minus3 points, fail at \minus8 points''. \\
+Paired comparison & Comparing the \emph{same} test case in both runs, instead of only comparing two averages. It shows exactly which cases changed. \\
+Regressed / improved case & A case that passed in the baseline and fails now (regressed), or the opposite (improved). \\
+Statistical significance, p-value & A way to measure how likely a difference is to be pure chance. A small p-value (here below 0.10) means ``very unlikely to be random''. \\
+McNemar test / sign test & The specific statistical test used: it only looks at cases that changed, and asks whether ``more broke than got fixed'' could be luck. \\
+Hard rule & A rule that fails the gate regardless of statistics, for example ``a case marked critical must never regress''. \\
+Precision / recall / F1 & Recall: of the emails that \emph{are} billing, how many were labelled billing. Precision: of the emails \emph{labelled} billing, how many really are. F1 combines both. \textbf{Macro F1} is the average F1 over the 4 categories. \\
+LLM judge & A second AI model used to grade the answers of the first one (here: grading summaries from 1 to 5), following a written grading rubric. \\
+Rubric & The written grading instructions given to the judge (what a 5 looks like, what a 2 looks like). \\
+Calibration & Checking that the judge's grades agree with a human's grades before trusting it. \\
+Gating / non-gating metric & A gating metric can fail the gate. A non-gating (informational) metric is shown but never blocks a change. \\
+Drift & Quality slowly getting worse over time \emph{without any change on our side}, for example because the provider quietly updated the model behind the same name. \\
+Moving average & The average of the last N values (here the last 7 runs), which smooths out day-to-day noise. \\
+Drift episode & The period during which a metric keeps drifting. An alert is sent once, when the episode starts, not every day. \\
+Database, SQLite, PostgreSQL & A database stores data in tables that can be searched. SQLite is a database in a single local file (no server). PostgreSQL is a full database server, used in deployment. \\
+Migration & A versioned script that creates or changes database tables, so every database can be upgraded safely to the latest structure. \\
+Webhook (Slack incoming webhook) & A secret web address that lets a program post messages into one Slack channel, and nothing else. \\
+Escaping & Neutralising special characters in text so they are shown as text, not interpreted (for example, preventing a name from triggering \texttt{@channel} in Slack, or HTML code from running in a report). \\
+Golden file & In testing: a saved ``expected output'' file. The test fails if the produced output differs from it. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{How the system works now (big picture)}
+
+\subsection{The full flow of a checked change}
+
+When a developer types
+\texttt{regguard run -p v2 -{}-baseline main -{}-report -{}-notify}:
+\begin{enumerate}
+  \item \textbf{Run the evaluation} exactly as in Phase 4: load the configuration, the prompt
+        and the golden dataset, call the AI for each case (with the rate limits, retries, cache
+        and budget), and score each answer. \textbf{New:} the summary is also checked (format
+        and overlap), and an AI judge grades it from 1 to 5.
+  \item \textbf{Enforce a hard cost cap} during the run: the number of real API calls, retries
+        included, can never exceed \texttt{-{}-max-requests} (new after an incident,
+        section~\ref{sec:difficulties}).
+  \item \textbf{Save the run} to \code{runs/<run-id>/result.json}, as before.
+  \item \textbf{Record the run in the history database} (new in Phase 6). If the database is
+        unavailable, this is only a warning: the run itself is never lost or failed because of it.
+  \item \textbf{Load the baseline} \code{main} from \code{baselines/main.json} (a file kept in git).
+  \item \textbf{Compare} the candidate with the baseline (Phase 5):
+        \begin{itemize}
+          \item pair the cases that exist in both runs and see which ones regressed or improved;
+          \item for each metric, compute the change and compare it with the warn and critical thresholds;
+          \item check the evidence: is the drop statistically significant, or did enough cases break?
+          \item apply the hard rules (minimum format validity, critical cases);
+          \item decide the verdict: PASS, WARN, FAIL or ERROR, with a list of machine-readable reasons.
+        \end{itemize}
+  \item \textbf{Save and record the comparison} (file next to the run, and in the database).
+  \item \textbf{Write the reports} (Phase 7): an HTML page and a Markdown summary in \code{reports/}.
+  \item \textbf{Notify Slack} (Phase 7) if the verdict is one of the configured events (by
+        default FAIL and ERROR). PASS never sends a message.
+  \item \textbf{Exit} with the verdict's code: 0 for PASS/WARN, 4 for FAIL, 3 for ERROR. The
+        report and Slack steps run \emph{before} the exit and never change the code.
+\end{enumerate}
+A separate command, \texttt{regguard drift}, looks at the history of comparable runs (same
+prompt, model and dataset) and reports whether quality is sliding over time.
+
+\subsection{How the code is organised now}
+
+The same layered ``modular monolith'' as before, with new layers. Each layer may only use the
+layers below it. The rule is still checked automatically on every change.
+
+\begin{center}
+\begin{tabular}{@{}p{0.42\linewidth}p{0.52\linewidth}@{}}
+\toprule
+\textbf{Layer} & \textbf{Role} \\
+\midrule
+\code{cli} & what the user types (commands) \\
+\code{services} & the ``use cases'': run, compare, history, drift, report, notify \\
+\code{evaluation} | \code{comparison} | \code{reporting} | \code{notifications} & running cases | verdicts and drift | HTML/Markdown | Slack \\
+\code{metrics} & scoring answers (now also summaries, judge scores, F1) \\
+\code{apps} & the application under test (email classifier) \\
+\code{prompts} | \code{datasets} | \code{storage} & prompt files, golden data, run files, baselines, history database \\
+\code{providers} & talking to the AI service \\
+\code{core} & shared building blocks (types, settings, gate rules, errors, logging) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+New since the last report: \code{comparison} (pure calculations, no files or network),
+\code{reporting} (pure: turns results into text), \code{notifications} (Slack), and the
+\code{storage/db} package (database). The rule ``\code{core}, \code{metrics} and
+\code{comparison} do no input/output'' keeps the decision logic fully reproducible and easy
+to test.
+
+% ===========================================================================
+\section{Technology choices and why}
+
+Only the additions since the last report are listed.
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.25\linewidth}p{0.49\linewidth}@{}}
+\toprule
+\textbf{Need} & \textbf{Choice} & \textbf{Why this one} \\
+\midrule
+\endhead
+Statistics (significance test) & Plain Python (exact binomial calculation) & The test needed is about 30 lines of code. Adding SciPy for it would be a heavy dependency, and on this Windows machine compiled packages can be blocked by Smart App Control. \\
+Summary similarity & Word-overlap score written in Python, not ``embeddings'' & Embedding models need PyTorch, a very large install that Smart App Control may block. The overlap score is kept as information only; the AI judge does the real grading. \\
+Judge model & NVIDIA Nemotron 3.5 Super (free on OpenRouter), low ``reasoning effort'' & A different family from the classifier (Gemma), so the model is not grading itself. Low reasoning effort keeps answers fast and cheap. \\
+Database access & SQLAlchemy 2.0 (synchronous) & The standard Python database library. Synchronous because the command-line tool does not need async complexity. \\
+Database migrations & Alembic, driven from Python & The standard tool for SQLAlchemy. Driven from code, because its command launcher could be blocked by Smart App Control. \\
+Local database & SQLite (built into Python) & Zero installation, one file. \\
+Deployment database & PostgreSQL (tested in GitHub CI only) & Robust and standard. Tested automatically in CI with a temporary database server, so nothing has to be installed locally. Installed only with the optional \code{postgres} extra. \\
+HTML report & Jinja2 templates & The standard Python template engine. Automatic escaping protects against code hidden in emails or model answers. \\
+Charts in the report & Inline SVG generated in Python & Small trend lines with no JavaScript and no chart library: the report is one self-contained file. \\
+Notifications & Slack incoming webhook, sent with httpx (already used) & No Slack library needed, minimal permissions (can only post into one channel). \\
+\bottomrule
+\end{longtable}
+
+Deliberately \textbf{not} added: SciPy, NumPy, PyTorch or sentence-transformers (see above),
+a Slack SDK, a JavaScript chart library, a task queue or a scheduler. The web API that the plan
+placed in Phase 6 was moved to Phase 8, just before the dashboard, which is its only user
+(ADR 0005).
+
+% ===========================================================================
+\section{What was built, phase by phase}
+
+\subsection{Phase 5a: Comparison and the regression gate}
+\textbf{Goal:} answer ``is the new version worse than the baseline?'' with a verdict that can
+block a deployment, without false alarms on a small dataset.
+\begin{itemize}
+  \item \textbf{Baselines as files} (\code{baselines/main.json}, next to the application's
+        configuration). A baseline is a run that a person \emph{promotes} with
+        \texttt{regguard baseline promote <run> -{}-name main}. It records who promoted it,
+        when, and which run it came from. Baselines are never changed automatically, and the
+        AI assistant is even forbidden by its permissions to edit them.
+  \item \textbf{Case-by-case comparison} (\code{comparison/diff.py}): for every case present in
+        both runs, was it passing before and now? Cases are labelled \emph{regressed},
+        \emph{improved}, \emph{unchanged}, \emph{new} or \emph{removed}. Cases that failed for
+        technical reasons are left out, never counted as regressions. If a case was sampled
+        several times, a majority vote decides its outcome.
+  \item \textbf{Thresholds per metric} (\code{core/gating.py}). Each metric has a ``warn'' and a
+        ``critical'' threshold, and the sign says which direction is bad. For example
+        \code{label_exact} (accuracy) warns at \minus3 points and is critical at \minus8 points;
+        \code{tokens_per_case} warns at +20\% and is critical at +50\%. The project's
+        \code{regguard.yaml} can override any of them.
+  \item \textbf{Evidence before alarm} (\code{comparison/stats.py}, ADR 0003). A drop beyond a
+        threshold only counts if it is \emph{also} backed by evidence: either the McNemar test
+        says it is unlikely to be chance (p below 0.10), or at least 3 cases regressed. This
+        avoids failing a change because one or two answers randomly flipped.
+  \item \textbf{Hard rules} that fail the gate whatever the statistics say: format validity
+        (\code{schema_valid}) below 95\%, or any case marked \code{critical} that regressed.
+  \item \textbf{The verdict} (\code{comparison/verdict.py}): PASS, WARN, FAIL, or the new
+        \textbf{ERROR} when the candidate run itself failed technically. Every verdict comes
+        with machine-readable \emph{reasons} (for example \code{critical_regression},
+        \code{schema_valid_floor}), plus information notes such as \code{statistical_power}:
+        ``with 12 cases, one case is 8.3 points; at least 4 one-way regressions are needed for
+        significance''.
+  \item \textbf{Safety checks:} comparing runs made on different dataset versions is refused
+        unless \texttt{-{}-allow-dataset-change} is given; a baseline that is itself in ERROR
+        is refused.
+  \item \textbf{Commands:} \texttt{baseline promote | list | show}, \texttt{compare <run>
+        [-{}-against <run>]}, \texttt{run \ldots\ -{}-baseline main}, with
+        \texttt{-{}-fail-on-warn} for strict pipelines. A FAIL returns \textbf{exit code 4},
+        which is what GitHub will use in Phase 9 to block a merge.
+\end{itemize}
+\textbf{Result:} 221 tests passing. Real demo: \code{v2} compared with \code{v1} gives
+\textbf{FAIL} (section~\ref{sec:results}).
+
+\subsection{Phase 5b, part 1: Summary metrics and per-category scores (offline)}
+\textbf{Goal:} measure the second half of the answer (the summary), and give a fuller picture
+of classification quality. No AI involved yet.
+\begin{itemize}
+  \item \textbf{``Not applicable'' scores.} If an answer is not valid JSON, we cannot read its
+        category, so \code{label_exact} now returns ``not applicable'' instead of ``wrong''.
+        The format failure is counted once, by \code{schema_valid}, instead of twice.
+  \item \code{summary_format} (gating): the summary must be one sentence, 5 to 40 words, and
+        not copied from the email.
+  \item \code{summary_similarity} (information only): how many important words the summary
+        shares with the human reference summary, ignoring the usual opening ``The customer\ldots''.
+  \item \textbf{Precision, recall, F1 per category and macro F1} (\code{metrics/classification.py}).
+  \item \textbf{Comparison of scores that are not pass/fail} (for example a similarity of 0.62
+        versus 0.58): each case is paired, small differences below a tolerance (``epsilon'')
+        are ignored, and the same sign test decides whether the drop is significant.
+  \item \textbf{Longer waits for server errors} (HTTP 5xx), after the Phase 5a demo showed 8
+        retries that came too fast.
+\end{itemize}
+\textbf{Result:} 248 tests passing. Real check with 0 API calls (everything from cache):
+verdict unchanged, and \code{summary_similarity} stayed around 0.5 even on good summaries.
+This confirmed that word overlap is a weak signal, and that an AI judge was needed.
+
+\subsection{Phase 5b, part 2: The AI judge}
+\textbf{Goal:} grade each summary the way a careful human would, without letting an unreliable
+grader block deployments.
+\begin{itemize}
+  \item \textbf{A versioned judge prompt} (\code{prompts/judge/v1.yaml}, then \code{v2.yaml}):
+        a 1 to 5 rubric, worked examples, and clear markers around the email and summary, so
+        instructions hidden in an email are treated as data, not obeyed. The judge model and
+        its settings live in this file, like the classifier's.
+  \item \textbf{Strict reading of the judge's answer}: it must be
+        \texttt{\{"score": 1-5, "reason": "..."\}}. An unreadable judge answer is recorded as a
+        \emph{judge error}, never as a low score, so a broken judge cannot make the application
+        look worse.
+  \item \textbf{A separate executor for the judge} that shares the same rate limiter and budget
+        as the classifier, so the two together never exceed the provider's limits.
+  \item \textbf{Full traceability:} each result records which judge model and judge prompt
+        version produced the grades. If baseline and candidate were graded by \emph{different}
+        judges, the comparison skips the judge score (reason \code{judge_changed}), because the
+        grades are not comparable.
+  \item \textbf{Non-gating by default:} \code{summary_judge} is shown in every comparison but
+        cannot fail the gate until the judge has been calibrated on deliberately bad summaries.
+  \item \textbf{Commands:} \texttt{run -{}-judge / -{}-no-judge}; \texttt{runs show} prints the
+        summary and the judge's reason for every score of 3 or less.
+\end{itemize}
+\textbf{Judge improvement (follow-ups 1 and 2).} The first real test showed two issues: the
+judge gave 5/5 to a summary containing a customer's full name (personal data), and penalised a
+summary for leaving out a compliment. \textbf{Judge prompt v2} caps the score at 3 when
+personal data appears and states that greetings and compliments are not required details.
+After this, the judge agreed with a human reading on \textbf{12 of 12} cases.
+
+\textbf{Result:} 280 tests passing. Phase 5 done.
+
+\subsection{Phase 6: Run history and drift detection}
+\textbf{Goal:} remember every run, show trends, and detect slow quality decline that no code
+change explains (ADR 0005).
+\begin{itemize}
+  \item \textbf{A history database} (\code{storage/db/}): 4 tables. \code{eval_run} stores one
+        row per run, including the complete result, so the database alone can rebuild any run.
+        \code{run_metric} has one row per metric per run, for fast trends. \code{case_result}
+        has one row per case per run. \code{comparison} stores the verdicts. Prompts and
+        datasets are \emph{not} copied into the database: git already versions them, and a
+        second copy would risk disagreeing with it.
+  \item \textbf{SQLite by default} (\code{.regguard/regguard.db}, created and upgraded
+        automatically), \textbf{PostgreSQL in deployment}. A new GitHub Actions job starts a
+        temporary PostgreSQL 16 server and runs the database tests against it.
+  \item \textbf{Migrations shipped inside the package} and run from Python, so
+        \texttt{regguard db upgrade} works without the Alembic launcher.
+  \item \textbf{Automatic recording:} \texttt{run} and \texttt{compare} write to the database.
+        Any database problem becomes a yellow warning; the run and its verdict are unaffected.
+  \item \textbf{Importing older runs:} \texttt{regguard history import} loads all existing run
+        and comparison files (0 API calls).
+  \item \textbf{Drift detection} (\code{comparison/drift.py}, pure logic):
+        \begin{itemize}
+          \item only \textbf{comparable} runs count: same app, prompt fingerprint, dataset
+                fingerprint, case set and model (and the same judge for judge scores);
+          \item only \textbf{fresh} runs count (no cached answers), since a cached answer cannot drift;
+          \item a metric is in \textbf{DRIFT} when the average of the last 7 runs is worse than
+                the baseline by the warn threshold \textbf{and} the last 3 runs are all worse;
+          \item with fewer than 3 comparable runs, the answer is \textbf{INSUFFICIENT}, never a
+                falsely reassuring OK;
+          \item the first drifting run is marked as a \textbf{new episode}, so an alert is sent once;
+          \item only gating metrics decide the overall status (an informational metric cannot
+                fail a scheduled job).
+        \end{itemize}
+  \item \textbf{Commands:} \texttt{history list}, \texttt{history import},
+        \texttt{history trend -{}-metric <name>}, \texttt{drift [-{}-fail-on-drift]},
+        \texttt{db upgrade}.
+\end{itemize}
+\textbf{Result:} 320 tests passing (plus 6 PostgreSQL tests that run in CI only).
+
+\textbf{Cost-control fix after the first monitoring run (20 November).} The provider was
+overloaded. 12 planned calls became \textbf{36 real calls}, because retries were not counted
+in the budget. \texttt{-{}-max-requests} is now a \textbf{hard cap on real API calls, retries
+included}, shared by the classifier and the judge. If it is reached, the run stops cleanly
+with status ERROR and the message ``API call budget exhausted''. Every run now prints a
+\texttt{Budget:} line. 324 tests passing.
+
+\subsection{Phase 7: Reports and Slack notifications}
+\textbf{Goal:} make each verdict readable by people who will never open a terminal, and alert
+the team when something goes wrong.
+\begin{itemize}
+  \item \textbf{HTML report} (\code{reporting/html.py} + template), one self-contained file per
+        run in \code{reports/<run-id>.html}. It shows:
+        \begin{itemize}
+          \item a large verdict banner and the main reasons;
+          \item provenance: app, prompt version and fingerprint, model, dataset, baseline,
+                judge, code version, cost;
+          \item the metrics table, with small \textbf{trend lines} drawn from the history database;
+          \item the \textbf{changed cases side by side}: the email, the expected answer, the
+                baseline's answer and the candidate's answer;
+          \item the other failing cases, then all cases in a folded section.
+        \end{itemize}
+        It adapts to light and dark mode, contains \textbf{no JavaScript}, and every piece of
+        text coming from an email or the model is escaped, so a malicious email cannot inject
+        code into the report.
+  \item \textbf{Markdown summary} (\code{reporting/markdown.py}), \code{reports/<run-id>.md}:
+        verdict, reasons, metrics table and up to 10 changed cases. It is designed to be posted
+        as a GitHub pull request comment in Phase 9. It \textbf{never contains email text or
+        model answers}, because PR comments are widely visible and real emails contain personal
+        data.
+  \item \textbf{Slack notifications} (\code{notifications/slack.py}): formatted messages for a
+        failed comparison, a run in ERROR, the start of a drift episode, and a connection test.
+        They contain the verdict, app, prompt, model, reasons, ids of regressed cases and the
+        report path, but never email text or model answers.
+  \item \textbf{Safety of the Slack integration:}
+        \begin{itemize}
+          \item notifications are \textbf{opt-in}: only sent with \texttt{-{}-notify}, and only
+                for the events listed in \code{regguard.yaml} (default: fail, error, drift;
+                warn can be added);
+          \item the webhook address is a secret, read only from the environment (\code{.env}
+                locally, a GitHub secret in CI). It is never printed, even in error messages,
+                and only \texttt{https://} addresses are accepted;
+          \item all text is escaped so that a name like \texttt{<!channel>} cannot notify the
+                whole channel;
+          \item a Slack failure is reported as a warning and \textbf{never changes the verdict
+                or the exit code}.
+        \end{itemize}
+  \item \textbf{Commands:} \texttt{report <run-id>} (works on any stored run, 0 API calls),
+        \texttt{-{}-report} and \texttt{-{}-notify} on \texttt{run} and \texttt{compare},
+        \texttt{-{}-notify} on \texttt{drift}, and \texttt{notify test}.
+  \item \textbf{Documentation:} \code{docs/slack-setup.md}, a 10-minute, no-coding guide to
+        create the Slack webhook and store it safely.
+\end{itemize}
+\textbf{Result:} 353 tests passing, 96\% of the code exercised by tests. A real report was
+generated from the stored \code{v2} versus \code{v1} comparison (section~\ref{sec:results}).
+
+% ===========================================================================
+\section{Every new or changed file explained}
+
+\subsection{Repository root and documentation}
+
+\begin{longtable}{@{}p{0.34\linewidth}p{0.61\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{CLAUDE.md} & Status log updated after every step; new lessons recorded (never use \code{on}/\code{off}/\code{yes}/\code{no} as YAML keys; absolute paths in PowerShell file operations). \\
+\code{.env.example} & New settings: \code{REGGUARD_DATABASE_URL}, \code{REGGUARD_RECORD_HISTORY}, \code{REGGUARD_SLACK_WEBHOOK_URL} (empty: the real value goes only in \code{.env}). \\
+\code{.claude/settings.json} & New rule: the AI assistant may not edit baseline files; they change only through the CLI. \\
+\code{.github/workflows/ci.yml} & New \code{postgres} job: starts a PostgreSQL 16 server and runs the database tests against it. \\
+\code{docs/adr/0002-file-baselines-in-ci.md} & Amended: baselines live next to the application's configuration (\code{examples/.../baselines/}). \\
+\code{docs/adr/0005-history-and-drift.md} & New decision: history database (4 tables), SQLite/PostgreSQL, drift rules, web API moved to Phase 8. \\
+\code{docs/slack-setup.md} & New: how to create a Slack webhook and keep it secret. \\
+\code{docs/report/progress-report-phases-5-7.*} & This report. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Example application (\texorpdfstring{\code{examples/support-email-classifier/}}{examples/support-email-classifier/})}
+
+\begin{longtable}{@{}p{0.30\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{regguard.yaml} & Now also declares the baselines folder, the judge (\code{prompts/judge}, version \code{v2}), the gate thresholds, the drift settings (window 7, 3 consecutive runs) and the Slack events. \\
+\code{prompts/judge/v1.yaml} & First judge prompt: 1 to 5 rubric, 3 worked examples, Nemotron with low reasoning effort. \\
+\code{prompts/judge/v2.yaml} & Improved judge: personal data caps the score at 3, compliments are not required details, 5 worked examples. Used now. \\
+\code{baselines/main.json} & The trusted baseline: prompt \code{v1} run \code{20261118T112032Z-a635b1}, graded by judge v2, promoted with the CLI. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Backend configuration}
+
+\begin{longtable}{@{}p{0.22\linewidth}p{0.73\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{pyproject.toml} & New dependencies: SQLAlchemy, Alembic, Jinja2; optional \code{postgres} extra (\code{psycopg}). The layer rule now includes \code{comparison}, \code{reporting} and \code{notifications}. \\
+\code{uv.lock} & Updated exact versions. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Application code (\texorpdfstring{\code{backend/src/regguard/}}{backend/src/regguard/})}
+
+\textbf{\code{core/}: shared building blocks}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.09\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{types.py} & changed & New data shapes: the ERROR verdict, judge results, baseline files, case changes, metric changes, comparisons with reasons, drift reports. \\
+\code{gating.py} & \new & The gate rules: thresholds per metric (warn, critical, unit, gating or not, tolerance), default values, significance level, minimum regressed cases, format floor, drift settings. \\
+\code{config.py} & changed & New settings: database address, record history on/off, reports folder, Slack webhook (stored as a secret that is hidden in logs). \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{apps/}}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.09\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{config.py} & changed & Reads the new \code{regguard.yaml} sections: baselines folder, judge, gate, notify. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{comparison/}: verdicts and drift (new package, pure logic)}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.75\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{stats.py} & The exact one-sided McNemar / sign test, and ``how many regressions are needed to be significant''. \\
+\code{diff.py} & Case outcomes (majority vote over samples), pairing of cases, regressed/improved lists, paired rates and paired continuous scores. \\
+\code{thresholds.py} & Shared helpers: compute a change, decide whether a threshold is crossed, format a change. Used by both verdicts and drift. \\
+\code{verdict.py} & The comparison itself: metric by metric, evidence, hard rules, reasons, final verdict. \\
+\code{drift.py} & Comparable-run key, fresh-run check, moving average, consecutive rule, new episode, drift report. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{metrics/}}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.09\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{base.py} & changed & A metric may now answer ``not applicable''. \\
+\code{deterministic.py} & changed & \code{label_exact} is not applicable when the answer is unreadable. \\
+\code{summary.py} & \new & \code{summary_format} (one sentence, 5 to 40 words, not copied) and \code{summary_similarity} (word overlap). \\
+\code{classification.py} & \new & Precision, recall, F1 per category, macro F1. \\
+\code{judge.py} & \new & The judge's answer format (score 1 to 5 plus reason), its strict reading, and the \code{summary_judge} score. \\
+\code{aggregate.py} & changed & New totals: precision and F1 per category, macro F1, judge error rate, judge tokens. \\
+\code{registry.py} & changed & Adds the summary metrics to the email classifier. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{evaluation/}}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.09\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{executor.py} & changed & Longer waits for server errors; new \code{CallBudget}, a hard cap on real API calls including retries. \\
+\code{judge.py} & \new & Builds the judge request and grades one summary. \\
+\code{runner.py} & changed & Calls the judge after a valid answer; records judge provenance and statistics; run is ERROR if the judge fails too often. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{storage/}}
+
+\begin{longtable}{@{}p{0.22\linewidth}p{0.09\linewidth}p{0.63\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{baseline_store.py} & \new & Save, load and list baseline files; checks baseline names. \\
+\code{db/models.py} & \new & The 4 database tables. \\
+\code{db/session.py} & \new & Connects to the database, runs migrations from Python, upgrades local SQLite automatically, refuses an outdated server database. \\
+\code{db/repository.py} & \new & All database reads and writes (record a run or comparison, list runs, metric trends). \\
+\code{db/migrations/} & \new & The migration environment and the first migration \code{0001_history}. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{services/}: use cases}
+
+\begin{longtable}{@{}p{0.22\linewidth}p{0.09\linewidth}p{0.63\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{run_service.py} & changed & Loads the judge prompt, counts judge calls in the estimate, shares one rate limiter and one call budget between classifier and judge. \\
+\code{compare_service.py} & \new & Promote a baseline, load the reference (baseline or another run), compare, save the comparison. \\
+\code{history_service.py} & \new & Record runs and comparisons (database errors become warnings), import old files, list, trends, upgrade. \\
+\code{drift_service.py} & \new & Load comparable history and compute the drift report. \\
+\code{report_service.py} & \new & Gather everything a report needs (emails only if the dataset is unchanged, trends from history) and write the HTML and Markdown files. \\
+\code{notify_service.py} & \new & Decide whether an event deserves a Slack message (PASS never, drift only at the start of an episode), send it, and report the outcome without ever raising an error. \\
+\bottomrule
+\end{longtable}
+
+\textbf{\code{reporting/}: turning results into documents (new package, pure logic)}
+
+\begin{longtable}{@{}p{0.28\linewidth}p{0.67\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{html.py} & Prepares the report data (case views, metrics, trends) and renders the template with automatic escaping. \\
+\code{templates/report.html.j2} & The HTML page layout and styles (light and dark mode, no JavaScript). \\
+\code{markdown.py} & The short Markdown summary for pull requests, with escaping and a limit of 10 cases. \\
+\code{svg.py} & Draws a small trend line (sparkline) from a list of numbers. \\
+\bottomrule
+\end{longtable}
+
+\newpage
+\textbf{\code{notifications/}, \code{providers/}, \code{cli/}}
+
+\begin{longtable}{@{}p{0.20\linewidth}p{0.09\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{slack.py} & \new{} (was empty) & Builds the Slack messages (comparison, run error, drift, connection test), escapes text, and sends them over HTTPS without ever revealing the webhook address. \\
+\code{factory.py} & changed & The mock provider can now answer differently for the classifier and the judge (used by tests and demos). \\
+\code{main.py} & changed & {\raggedright New commands: \texttt{baseline promote/list/show}, \texttt{compare}, \texttt{report}, \texttt{history import/list/trend}, \texttt{drift}, \texttt{db upgrade}, \texttt{notify test}. New options on \texttt{run}: \texttt{-{}-baseline}, \texttt{-{}-fail-on-warn}, \texttt{-{}-allow-dataset-change}, \texttt{-{}-judge/-{}-no-judge}, \texttt{-{}-report}, \texttt{-{}-notify}. Displays a judge column and a \texttt{Budget:} line. Report and notification always happen before the exit code is returned.\par} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Tests (\texorpdfstring{\code{backend/tests/}}{backend/tests/})}
+
+\begin{longtable}{@{}p{0.28\linewidth}p{0.67\linewidth}@{}}
+\toprule
+\textbf{File} & \textbf{What it checks} \\
+\midrule
+\endhead
+\code{run_factory.py} & Helper that builds realistic fake runs for comparison and report tests. \\
+\code{test_comparison_stats.py} & The significance test against known values. \\
+\code{test_comparison.py} & Every verdict path: thresholds, evidence, hard rules, critical cases, ERROR, dataset change, judge change, continuous scores. \\
+\code{test_baselines.py} & Promoting, loading and listing baselines; invalid names; refusing to overwrite. \\
+\code{test_cli_compare.py} & The \texttt{baseline}, \texttt{compare} and \texttt{run -{}-baseline} commands end to end, including exit codes. \\
+\code{test_summary_metrics.py} & Summary format and similarity rules. \\
+\code{test_classification.py} & Precision, recall, F1 and macro F1. \\
+\code{test_judge.py} & Judge answer reading, judge errors, provenance, budget sharing. \\
+\code{test_drift.py} & Comparable runs, fresh runs, moving average, consecutive rule, insufficient history, new episodes, gating-only status. \\
+\code{test_db.py} & Database tables and migrations up and down, on SQLite and (in CI) on PostgreSQL. \\
+\code{test_history.py} & Recording, import, trends, and ``database failure is only a warning''. \\
+\code{test_reporting.py} & HTML escaping (no injected code), no JavaScript, Markdown content, and a golden file for the FAIL summary. \\
+\code{test_notifications.py} & Slack messages and escaping, event rules, the webhook never appearing in output, and loading the real \code{regguard.yaml}. \\
+\code{golden/summary_fail.md} & The expected Markdown summary for a FAIL comparison. \\
+Existing files & Updated for the new behaviour (executor budget, judge in runs, new data types). \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Real results obtained}
+\label{sec:results}
+
+All results below come from the real AI (OpenRouter, Gemma 4 26B for classification, Nemotron
+3.5 Super as judge) on the 12-case balanced sample (3 emails per category).
+
+\subsection{The regression demo: prompt v2 versus prompt v1 (Phase 5a)}
+
+Prompt \code{v1} was promoted as baseline \code{main}. Then the deliberately minimal prompt
+\code{v2} was run and compared:
+
+\begin{center}
+\begin{tabular}{@{}p{0.36\linewidth}p{0.13\linewidth}p{0.13\linewidth}p{0.30\linewidth}@{}}
+\toprule
+\textbf{Metric} & \textbf{Baseline (v1)} & \textbf{Candidate (v2)} & \textbf{Change} \\
+\midrule
+Format valid (\code{schema_valid}) & 100\% & 66.7\% & \minus33.3 points (4 regressed, 0 improved, p = 0.062) \\
+Correct category (\code{label_exact}), on readable answers & 100\% & 100\% & none \\
+Summary format & 100\% & 100\% & none \\
+Judge score (1 to 5) & 4.75 & 4.75 & none (same judge) \\
+Tokens per case & 412 & 140 & \minus66\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\keyidea{\textbf{Verdict: FAIL, exit code 4}, for two reasons: \code{critical_regression}
+(format validity dropped far beyond the threshold, with significant evidence) and
+\code{schema_valid_floor} (66.7\% is below the 95\% minimum).}
+
+What happened: on 4 emails, \code{v2} made the model return its answer inside a list,
+\texttt{[\{"category": ...\}]}, instead of a plain object. A program reading that answer would
+crash. The category inside was even correct, which is exactly the kind of silent breakage that
+average accuracy hides. Note also the token drop: \code{v2} is much cheaper, which is the
+tempting reason a team would ship it.
+
+\subsection{Summary metrics (Phase 5b-1, 0 API calls)}
+
+Rescoring from cache confirmed the verdict. \code{summary_similarity} stayed around
+\textbf{0.46 to 0.51} even for good summaries: the model writes ``The customer is
+asking\ldots'' while references say ``Customer asks\ldots''. Word overlap cannot tell a good
+summary from a bad one, so it stays informational.
+
+\subsection{The AI judge (Phase 5b-2)}
+
+\begin{longtable}{@{}p{0.18\linewidth}p{0.14\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{Step} & \textbf{Judge calls} & \textbf{Result} \\
+\midrule
+\endhead
+Judge v1, first run & 20, 0 errors & Average 4.67 for v1. Agreed with a human reading on 11 of 12. Miss: gave 5/5 to a summary containing a customer's full name. \\
+Judge v2 re-score & 20, 0 errors & That summary now 3/5 (``capped at 3 because it includes the sender's personal name''). A summary penalised for omitting a compliment went from 4 to 5. The other 10 scores did not move. \textbf{Agreement: 12 of 12.} \\
+\bottomrule
+\end{longtable}
+
+The v1 run graded by judge v2 (average 4.58) was promoted as the new baseline \code{main}.
+The judge stays \textbf{non-gating}: it has never yet been shown a really bad summary, so we
+have not proven it gives low scores when it should (section~\ref{sec:remaining}).
+
+\subsection{History import and drift (Phase 6)}
+
+\texttt{history import} loaded \textbf{12 runs and 5 comparisons} from the existing files, with
+0 API calls. \texttt{drift} answered \textbf{INSUFFICIENT}: all earlier runs reused cached
+answers, and cached answers cannot reveal drift. This is the intended behaviour: the system
+refuses to claim ``no drift'' without real evidence.
+
+\subsection{First monitoring run: a real provider incident (20 November)}
+
+Command: \texttt{run -p v1 -{}-limit 12 -{}-no-judge -{}-cache refresh} (fresh calls, for drift).
+
+\begin{longtable}{@{}p{0.45\linewidth}p{0.50\linewidth}@{}}
+\toprule
+\textbf{What happened} & \textbf{What the system did} \\
+\midrule
+\endhead
+Google's servers answered HTTP 503 ``high demand'' repeatedly. & Retried with growing waits: 24 retries in total. \\
+2 cases still failed after 4 retries each (17\% of cases). & Marked the run \textbf{ERROR} (above the 10\% limit), not a quality drop. \\
+The run was in ERROR. & Drift detection ignored it, as designed. \\
+12 planned calls turned into \textbf{36 real calls}. & Revealed a gap: retries were not budgeted. \textbf{Fixed the same day} (hard call cap, section 5). \\
+\bottomrule
+\end{longtable}
+
+\subsection{First real report (Phase 7)}
+
+\texttt{regguard report 20261118T112155Z} (0 API calls) produced
+\code{reports/20261118T112155Z-edd66e.html} and \code{.md} from the stored v2 versus v1
+comparison. Shortened, the Markdown summary reads as follows; it is what a GitHub comment will
+look like in Phase 9.
+
+\begin{Verbatim}[fontsize=\small,frame=single]
+## RegressionGuard: FAIL
+App support-email-classifier, prompt v2 vs baseline main (v1),
+model gemma-4-26b, 12 cases
+Why
+- FAIL critical_regression: schema_valid 100.0% -> 66.7% (-33.3 pts),
+  4 regressed / 0 improved of 12, p=0.062
+- FAIL schema_valid_floor: schema_valid 66.7% is below the floor of 95%
+Changed cases: email-0012, email-0015, email-0017, email-0023
+  (regressed, schema_valid)
+\end{Verbatim}
+
+The HTML version was checked automatically: it contains no \texttt{<script>}, includes the
+trend lines and the 4 regressed emails side by side. Slack sending is fully tested with a
+simulated Slack. The real connection test waits for the webhook setup
+(section~\ref{sec:remaining}).
+
+% ===========================================================================
+\section{Difficulties met and how they were solved}
+\label{sec:difficulties}
+
+\begin{longtable}{@{}p{0.03\linewidth}p{0.25\linewidth}p{0.29\linewidth}p{0.36\linewidth}@{}}
+\toprule
+\textbf{\#} & \textbf{Difficulty} & \textbf{Cause} & \textbf{Solution} \\
+\midrule
+\endhead
+1 & Should a 2-case drop on 12 cases fail a change? & With 12 cases, one case is 8.3 points, so any fixed percentage threshold fires on noise. & Two conditions: the drop crosses the threshold \textbf{and} there is evidence (p < 0.10 or at least 3 regressed cases). Each comparison states how many regressions would be needed for significance. \\
+2 & An unreadable answer was counted as wrong twice (format \textbf{and} category) & \code{label_exact} scored invalid answers as wrong. & ``Not applicable'' scores: the format failure is counted once, by \code{schema_valid}. \\
+3 & 8 retries in the Phase 5a demo for 12 cases & Waits after server errors (5xx) were too short. & Server errors now wait longer (2~s base, with random spread). \\
+4 & Word overlap could not judge summaries (about 0.5 even when good) & Different wording for the same meaning. & Kept as information only; an AI judge grades meaning. Embeddings were rejected (very large install, blocked risk under Smart App Control). \\
+5 & Judge model could ``think'' for a long time (hidden reasoning tokens) & Nemotron is a reasoning model (seen in Phase 2). & \texttt{reasoning: \{effort: low\}} in the judge prompt file and a token limit. \\
+6 & A broken judge could have made the application look worse & An unreadable judge answer could be mistaken for a low grade. & It is recorded as a judge error. Too many judge errors put the run in ERROR. \\
+7 & Judge gave 5/5 to a summary with a person's name & The rubric did not mention personal data. & Judge prompt v2 caps such summaries at 3. Agreement went from 11/12 to 12/12. \\
+8 & Comparing grades from two different judges would be meaningless & Changing the judge prompt changes the grades. & The comparison skips the judge score when the judges differ (\code{judge_changed}). The baseline was re-graded with judge v2. \\
+9 & Would a database library work under Windows Smart App Control? & Compiled packages and launchers can be blocked (ADR 0004). & A short test (``spike'') before writing any code: SQLAlchemy and Alembic both worked, with migrations run from Python instead of a launcher. \\
+10 & An informational metric could fail a scheduled drift job & Drift initially used all metrics. & Each drift result says whether the metric is gating; only gating metrics decide the status. \\
+11 & Drift could not be tested on real data & All past runs used the cache. & Drift says INSUFFICIENT instead of OK. Fresh monitoring runs (\texttt{-{}-cache refresh}) are needed; to be scheduled in Phase 9. \\
+12 & \textbf{12 planned calls cost 36 real calls} during a provider incident & Retries were not counted in the budget. & \code{CallBudget}: a hard cap on real calls, retries included, shared with the judge. The run stops cleanly when reached. The test was written so it does not really wait during retries. \\
+13 & Slack could have notified the whole channel & The message's fallback text was not escaped, so \texttt{<!channel>} in a name would ping everyone. & All Slack text is escaped, fallback text included, with a test. \\
+14 & \textbf{The real configuration failed to load} after adding Slack settings & In YAML 1.1 (used by PyYAML), the key \code{on:} is read as the boolean \emph{true}. Tests built the configuration in Python and did not catch it. & Key renamed \code{events}; a new test loads the real \code{regguard.yaml}. Lesson recorded: never use \code{on}, \code{off}, \code{yes}, \code{no} as YAML keys. \\
+15 & Python suddenly could not import its own \code{html} module & A failed PowerShell command had created two empty files, \code{html.py} and \code{markdown.py}, in the backend folder; Python picked up the empty \code{html.py} instead of the standard one. & Found by verification, checked they were empty, deleted before any commit. Lesson recorded: always give absolute paths to .NET file functions in PowerShell. \\
+16 & Some typographic characters failed the style checker & En dashes and minus signs written directly in code. & Written as escape codes. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Important design decisions}
+\label{sec:decisions}
+
+\begin{longtable}{@{}p{0.40\linewidth}p{0.55\linewidth}@{}}
+\toprule
+\textbf{Decision} & \textbf{Reason} \\
+\midrule
+\endhead
+\textbf{Alarm only on a large drop \emph{with} evidence} (ADR 0003, implemented) & Prevents constant false alarms on a small dataset, without hiding real regressions: 3 or more broken cases always count. \\
+\textbf{Paired, case-by-case comparison} rather than two averages & Shows exactly which emails broke; more sensitive, because it ignores cases that did not change. \\
+\textbf{Hard rules beside statistics} (format floor, critical cases) & Some failures are unacceptable even once, whatever the statistics. \\
+\textbf{Four verdicts, with ERROR separate from FAIL} & A provider outage must never look like ``your prompt got worse'' (exit 3 versus 4). \\
+\textbf{Thresholds in configuration, with defaults} & Each team can tune them in \code{regguard.yaml}; the defaults work out of the box. \\
+\textbf{Baselines changed only on purpose, through the CLI} & A baseline is a reviewed decision, not a side effect. The AI assistant is forbidden to edit them. \\
+\textbf{The AI judge is non-gating until calibrated} & An uncalibrated grader must not block deployments. It becomes gating after a calibration set written by a human. \\
+\textbf{The judge is versioned like a prompt, and recorded in each result} & Changing the judge changes the grades; results must say which judge produced them. \\
+\textbf{Judge model from a different family than the classifier} & Reduces the bias of a model grading answers that look like its own. \\
+\textbf{No embeddings, no SciPy} & Avoids very large dependencies and Smart App Control blocks; plain Python is enough. \\
+\textbf{Files remain the source of truth for CI; the database is for history} (ADR 0005) & GitHub machines are temporary; files in the repository survive, and their changes are reviewable. \\
+\textbf{4 database tables, not 11} & Prompts and datasets already live in git; copying them would create a second source of truth. \\
+\textbf{A database failure is only a warning} & History is useful, but must never break a run or a verdict. \\
+\textbf{Drift uses comparable, fresh runs only, and can say ``insufficient''} & Comparing different prompts, or cached answers, would give meaningless or falsely reassuring results. \\
+\textbf{One alert per drift episode} & Daily repeated alerts teach people to ignore the channel. \\
+\textbf{The call budget is a hard cap, retries included} & Free plans allow about 50 calls a day; an outage must not silently burn the quota. \\
+\textbf{No email text or model answers in Slack or Markdown} & Channels and pull requests are widely read; real emails contain personal data. Details stay in the HTML report. \\
+\textbf{Notifications are opt-in, and never change the exit code} & Nobody is spammed by default, and Slack being down never blocks or unblocks a deployment. \\
+\textbf{Web API moved to Phase 8} & The command line covers every need until the dashboard exists; building the API earlier would mean maintaining it with no user. \\
+\textbf{Phase 9 (GitHub gate) before Phase 8 (dashboard)} & The automatic gate on pull requests is the core value of the project, and everything it needs exists now. \\
+\bottomrule
+\end{longtable}
+
+% ===========================================================================
+\section{Quality: how we know it works}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Indicator} & \textbf{End of Phase 4} & \textbf{End of Phase 7} \\
+\midrule
+Automated tests & 151 & \textbf{353} (+ 6 PostgreSQL tests run in CI) \\
+Code exercised by tests & 95\% & \textbf{96\%} \\
+Lines of application code & about 2,500 & about 5,500 \\
+Lines of tests & about 1,650 & about 3,150 \\
+Test duration & about 2 s & about 6 s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item All checks pass (verified on 20 November 2026 with
+        \texttt{uv run python scripts/check.py}): formatting, ruff, mypy in strict mode, the
+        layer rule (1 contract kept, 0 broken), and pytest.
+  \item \textbf{GitHub Actions} now has two jobs: the full checks on Python 3.12 and 3.14, and
+        the PostgreSQL job.
+  \item \textbf{Security-oriented tests:} HTML escaping with malicious email content, no
+        JavaScript in reports, Slack mention escaping, the webhook address never printed,
+        \texttt{https} only.
+  \item \textbf{A golden file} protects the exact Markdown summary format, which GitHub
+        comments will depend on.
+  \item \textbf{Real-world verification} at every phase (section~\ref{sec:results}): the
+        regression demo, the judge calibration, the history import, a real provider incident,
+        a real report.
+  \item \textbf{Bugs found by verification before they reached use}: the Slack escaping
+        problem, the YAML \code{on:} key, the stray empty files, the unbudgeted retries.
+\end{itemize}
+
+% ===========================================================================
+\section{What remains to do}
+\label{sec:remaining}
+
+\subsection{Next phases}
+
+\begin{longtable}{@{}p{0.10\linewidth}p{0.85\linewidth}@{}}
+\toprule
+\textbf{Phase} & \textbf{Content} \\
+\midrule
+\endhead
+\textbf{9} (next) & GitHub integration: on every pull request that changes a prompt or the dataset, run the evaluation, post the Markdown summary as a comment, and block the merge on FAIL. Plus a scheduled daily fresh run for drift detection. Needs the \code{gh} command-line tool. \\
+8 & Web API and dashboard: browse runs, comparisons, trends and drift in a browser. \\
+10 & Docker, security hardening, deployment. \\
+11 & Documentation, README, demo video. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Pending actions (project owner)}
+
+\begin{longtable}{@{}p{0.55\linewidth}p{0.40\linewidth}@{}}
+\toprule
+\textbf{Action} & \textbf{Why} \\
+\midrule
+\endhead
+Open \code{backend/reports/20261118T112155Z-edd66e.html} in a browser and give feedback. & The HTML's content is checked automatically, but not how it looks on screen. \\
+Set up Slack with \code{docs/slack-setup.md}, then \texttt{notify test}, then \texttt{compare 20261118T112155Z -{}-notify}. & The real Slack connection has not been tested yet. \\
+Check that both GitHub Actions jobs (backend and postgres) are green. & The PostgreSQL tests only run there. \\
+Install the GitHub CLI: \texttt{winget install GitHub.cli}. & Needed for Phase 9. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Open improvements (optional)}
+\begin{itemize}
+  \item \textbf{Grow the golden dataset from 24 to 60 cases}, with more hard cases (ambiguous,
+        typos, French/English, injection attempts). With 12 cases, 4 one-way regressions are
+        needed for significance; more cases make the gate more sensitive.
+  \item \textbf{Judge calibration set} (follow-up 3): about 8 deliberately flawed summaries with
+        the expected scores, written by a human, and a \texttt{regguard judge calibrate}
+        command. This is the condition for making the judge gating.
+  \item \textbf{Daily fresh monitoring run}
+        (\texttt{run -p v1 -{}-limit 12 -{}-no-judge -{}-cache refresh}) so drift detection
+        gets real data; Phase 9 will schedule it.
+  \item Remove ``enjoys the application'' from the reference summary of email-0011.
+  \item A classifier prompt \code{v3} that forbids personal names in summaries.
+\end{itemize}
+
+% ===========================================================================
+\section{How to run it}
+
+From the \code{backend} folder, in PowerShell. \texttt{-c} points to the application
+configuration: \texttt{\$c = "..\textbackslash examples\textbackslash
+support-email-classifier\textbackslash regguard.yaml"}.
+
+\begin{Verbatim}[fontsize=\small,frame=single]
+# All quality checks (same as GitHub)
+uv run python scripts/check.py
+
+# Evaluate a prompt, compare with the baseline, write the report, alert Slack
+uv run python -m regguard run -p v2 --limit 12 --baseline main --report --notify -c $c
+
+# Baselines
+uv run python -m regguard baseline list -c $c
+uv run python -m regguard baseline show main -c $c
+uv run python -m regguard baseline promote <run-id> --name main -c $c
+
+# Compare a stored run (0 API calls), or two runs together
+uv run python -m regguard compare <run-id> -c $c
+uv run python -m regguard compare <run-id> --against <other-run-id> -c $c
+
+# Reports for a stored run (0 API calls)
+uv run python -m regguard report <run-id> -c $c
+
+# History and drift
+uv run python -m regguard history import
+uv run python -m regguard history list
+uv run python -m regguard history trend --metric label_exact
+uv run python -m regguard drift -c $c
+uv run python -m regguard run -p v1 --limit 12 --no-judge --cache refresh -c $c
+
+# Slack
+uv run python -m regguard notify test
+\end{Verbatim}
+
+Exit codes: \textbf{0} PASS or WARN, \textbf{1} invalid input, \textbf{2} configuration
+error, \textbf{3} provider problem or ERROR verdict, \textbf{4} gate FAIL
+(\texttt{-{}-fail-on-warn} also fails on WARN).
+
+The private \code{.env} file (repository root) holds the secrets: \code{REGGUARD_LLM_API_KEY}
+and, optionally, \code{REGGUARD_SLACK_WEBHOOK_URL}. It is never committed.
+
+% ===========================================================================
+\section{Appendix: commit history}
+
+\begin{longtable}{@{}p{0.14\linewidth}p{0.81\linewidth}@{}}
+\toprule
+\textbf{Commit} & \textbf{Content} \\
+\midrule
+\endhead
+\code{de17c19} & Progress report for phases 0 to 4 \\
+\code{dee0023} & Phase 5a: baselines, comparison and significance-aware gate; v1 baseline \\
+\code{79f91f1} & Phase 5b: summary metrics and F1 (part 1), AI judge for summary quality (part 2: versioned prompt, separate executor, non-gating) \\
+\code{a996442} & Phase 5: judge v2 calibrated; v1 baseline re-scored with judge v2 \\
+\code{88fc4e6} & Phase 6: history database, history and trend commands, drift detection, PostgreSQL CI job \\
+\code{0213b7b} & Fix: \texttt{-{}-max-requests} is a hard cap on real API calls, retries included \\
+\code{20ec324} & Phase 7: HTML and Markdown reports, Slack notifications (opt-in), \texttt{notify test} \\
+\bottomrule
+\end{longtable}
+
+\end{document}
