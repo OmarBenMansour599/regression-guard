@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     max_retries: int = Field(default=4, ge=0, le=10)
     requests_per_minute: int = Field(default=15, ge=1, le=10_000)  # OpenRouter free tier: 20
     max_error_rate: float = Field(default=0.10, ge=0.0, le=1.0)  # above this, run = ERROR
+    # Outage handling: after N failed attempts in a row the provider counts as down (no more
+    # calls), then failed cases get a second pass after a pause. 0 = switch off.
+    outage_after_failures: int = Field(default=3, ge=0, le=100)
+    second_pass_delay_s: float = Field(default=60.0, ge=0.0, le=600.0)
 
     # Local storage (relative to the working directory; both are git-ignored)
     cache_dir: Path = Path(".regguard/cache")

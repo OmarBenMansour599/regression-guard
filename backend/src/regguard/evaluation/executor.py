@@ -37,6 +37,13 @@ class RetryPolicy:
     # 5xx from an overloaded upstream also need a real pause (equal jitter, 2 s base).
     server_error_base_delay_s: float = 2.0
     abort_after_consecutive_failures: int = 5
+    # Outage switch: after this many failed attempts in a row (any call: 5xx, 429, network),
+    # the provider counts as down. Retries stop and new calls are not sent, so a burst of
+    # upstream errors cannot eat the call budget. None = off.
+    outage_after_failures: int | None = None
+    # Pause before the runner's second pass over cases that failed for temporary reasons.
+    # Upstream overloads often last about a minute. None = no second pass.
+    second_pass_delay_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +129,8 @@ class Executor:
         self._sleep = sleep
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not security
         self._consecutive_failures = 0
+        self._failed_attempts_streak = 0
+        self._unavailable: ProviderError | None = None  # set while the outage switch is on
         self.aborted_reason: str | None = None
         self.cache_hits = 0
         self.api_calls = 0
@@ -153,6 +162,43 @@ class Executor:
         message = f"run aborted: {self.aborted_reason}"
         return CallOutcome(None, CaseError(type="aborted", message=message), attempts)
 
+    def _unavailable_outcome(self, attempts: int) -> CallOutcome:
+        """Not completed because the provider is down: retryable in the second pass."""
+        message = (
+            f"not completed: provider unavailable after {self._failed_attempts_streak} failed "
+            f"attempts in a row (last: {self._unavailable})"
+        )
+        error = CaseError(type="unavailable", message=message, retryable=True)
+        return CallOutcome(None, error, attempts)
+
+    def _note_failed_attempt(self, exc: ProviderError) -> None:
+        self._failed_attempts_streak += 1
+        threshold = self._policy.outage_after_failures
+        if (
+            threshold is not None
+            and self._unavailable is None
+            and self._failed_attempts_streak >= threshold
+        ):
+            self._unavailable = exc
+            _log.warning(
+                "provider_unavailable",
+                failed_attempts=self._failed_attempts_streak,
+                error=_error_type(exc),
+            )
+
+    @property
+    def second_pass_enabled(self) -> bool:
+        return self._policy.second_pass_delay_s is not None
+
+    async def start_second_pass(self, cases: int) -> None:
+        """Pause, then let calls through again (the runner retries the failed cases once)."""
+        delay = self._policy.second_pass_delay_s or 0.0
+        _log.info("second_pass", cases=cases, wait_s=delay)
+        await self._sleep(delay)
+        self._unavailable = None
+        self._failed_attempts_streak = 0
+        self._consecutive_failures = 0
+
     def _failure(self, exc: ProviderError, attempts: int) -> CallOutcome:
         self._consecutive_failures += 1
         if self._consecutive_failures >= self._policy.abort_after_consecutive_failures:
@@ -173,6 +219,8 @@ class Executor:
             while True:
                 if self.aborted_reason is not None:
                     return self._aborted_outcome(attempt)
+                if self._unavailable is not None:  # provider down: do not spend calls
+                    return self._unavailable_outcome(attempt)
                 if self._budget is not None and not self._budget.try_spend():
                     self._abort(
                         f"API call budget exhausted ({self._budget.limit} calls, "
@@ -191,7 +239,12 @@ class Executor:
                     if exc.fatal:  # every other call would fail the same way
                         self._abort(str(exc))
                         return self._failure(exc, attempt)
-                    if not exc.retryable or attempt > self._policy.max_retries:
+                    if not exc.retryable:
+                        return self._failure(exc, attempt)
+                    self._note_failed_attempt(exc)
+                    if self._unavailable is not None:
+                        return self._unavailable_outcome(attempt)
+                    if attempt > self._policy.max_retries:
                         return self._failure(exc, attempt)
                     delay = (
                         min(exc.retry_after_s, _MAX_RETRY_AFTER_S)
@@ -209,6 +262,7 @@ class Executor:
                     await self._sleep(delay)
                     continue
                 self._consecutive_failures = 0
+                self._failed_attempts_streak = 0
                 self.served_models.add(completion.model)
                 self._cache.put(key, completion)
                 return CallOutcome(completion, None, attempt + 1)

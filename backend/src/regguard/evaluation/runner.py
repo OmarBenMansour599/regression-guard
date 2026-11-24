@@ -127,9 +127,18 @@ async def execute_run(
             on_progress(done, total)
         return result
 
-    results = await asyncio.gather(
-        *(tracked(case, s) for case in plan.cases for s in range(plan.n_samples))
-    )
+    jobs = [(case, s) for case in plan.cases for s in range(plan.n_samples)]
+    results = list(await asyncio.gather(*(tracked(case, s) for case, s in jobs)))
+
+    # Second pass: cases that failed for temporary reasons (overload, outage switch) get one
+    # more chance after a pause. Still failing -> they count as errors, as before.
+    retry = [i for i, r in enumerate(results) if r.error is not None and r.error.retryable]
+    if retry and executor.second_pass_enabled and executor.aborted_reason is None:
+        await executor.start_second_pass(len(retry))
+        again = await asyncio.gather(*(_run_case(plan, executor, *jobs[i], judge) for i in retry))
+        for i, result in zip(retry, again, strict=True):
+            results[i] = result
+
     aggregates = compute_aggregates(results, plan.cases, label_field=plan.spec.label_field)
     error_rate = aggregates["error_rate"].value
 

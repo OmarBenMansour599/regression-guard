@@ -179,6 +179,49 @@ async def test_auth_error_aborts_whole_run(tmp_path: Path) -> None:
     assert len(provider.calls) == 1  # no further calls after abort
 
 
+OUTAGE = RetryPolicy(max_retries=4, outage_after_failures=3, second_pass_delay_s=60.0)
+
+
+async def test_outage_switch_stops_spending_calls(tmp_path: Path) -> None:
+    """Real case 2026-11-24: 27 of 30 calls were 5xx; retrying burned the whole budget."""
+    provider = scripted(retryable(503))
+    executor, _ = make_executor(provider, tmp_path, policy=OUTAGE)
+    first = await executor.call(REQUEST)  # 3 failed attempts, then the switch trips
+    second = await executor.call(REQUEST)  # not even sent
+    assert len(provider.calls) == 3
+    assert first.error is not None and first.error.type == "unavailable"
+    assert first.error.retryable and "3 failed attempts in a row" in first.error.message
+    assert second.error is not None and second.error.type == "unavailable"
+    assert executor.aborted_reason is None  # deferred, not aborted: a second pass can follow
+
+
+async def test_success_resets_the_outage_streak(tmp_path: Path) -> None:
+    provider = scripted(retryable(503), retryable(503), "ok", retryable(503), retryable(503), "ok")
+    executor, _ = make_executor(provider, tmp_path, policy=OUTAGE)
+    assert (await executor.call(REQUEST)).completion is not None
+    assert (await executor.call(REQUEST)).completion is not None  # streak restarted at 0
+    assert len(provider.calls) == 6
+
+
+async def test_non_retryable_errors_do_not_trip_the_switch(tmp_path: Path) -> None:
+    provider = scripted(ProviderError("bad request", status_code=400))
+    executor, _ = make_executor(provider, tmp_path, policy=OUTAGE)
+    for _ in range(4):
+        outcome = await executor.call(REQUEST)
+        assert outcome.error is not None and outcome.error.type == "client_error"
+    assert len(provider.calls) == 4
+
+
+async def test_second_pass_waits_and_lets_calls_through(tmp_path: Path) -> None:
+    provider = scripted(retryable(503), retryable(503), retryable(503), "ok")
+    executor, time = make_executor(provider, tmp_path, policy=OUTAGE)
+    assert (await executor.call(REQUEST)).error is not None
+    assert executor.second_pass_enabled
+    await executor.start_second_pass(cases=1)
+    assert time.sleeps[-1] == 60.0
+    assert (await executor.call(REQUEST)).completion is not None
+
+
 async def test_fatal_error_aborts_after_one_call(tmp_path: Path) -> None:
     """A key that cannot be sent fails every call: stop at once instead of burning the budget."""
     provider = scripted(ProviderError("bad header", fatal=True))
