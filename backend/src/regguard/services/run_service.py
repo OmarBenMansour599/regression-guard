@@ -227,7 +227,13 @@ async def execute_prepared(
     """Run (budget must already be checked), save the result, and return it."""
     # One limiter for both executors: app and judge calls share the same API key and quota.
     limiter = RateLimiter(settings.requests_per_minute)
-    policy = RetryPolicy(max_retries=settings.max_retries)
+    # Free tiers see bursts of upstream 5xx: stop calling after 3 failed attempts in a row,
+    # then give the failed cases one more chance after a minute (real outages 2026-11-20/22/24).
+    policy = RetryPolicy(
+        max_retries=settings.max_retries,
+        outage_after_failures=settings.outage_after_failures or None,
+        second_pass_delay_s=settings.second_pass_delay_s,
+    )
     # Hard cap on real calls (app + judge, retries included): --max-requests is a promise.
     budget = CallBudget(prepared.options.max_requests)
     executor = Executor(

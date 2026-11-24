@@ -89,6 +89,58 @@ async def _run(tmp_path: Path, plan: RunPlan, max_error_rate: float = 0.5):  # t
     )
 
 
+def _outage_run(tmp_path: Path, provider: MockProvider):  # type: ignore[no-untyped-def]
+    t = FakeTime()
+    executor = Executor(
+        provider,
+        cache=ResponseCache(tmp_path, CacheMode.READ_WRITE, namespace="t"),
+        limiter=RateLimiter(6000, clock=t.clock, sleep=t.sleep),
+        concurrency=1,
+        policy=RetryPolicy(max_retries=4, outage_after_failures=3, second_pass_delay_s=60.0),
+        sleep=t.sleep,
+        rng=random.Random(0),
+    )
+    plan = _plan(cases=CASES[:2])
+    run = execute_run(
+        plan, executor, run_id="r1", provider_name="mock", cache_mode="rw", max_error_rate=0.1
+    )
+    return run, t
+
+
+def _down_for(n: int) -> MockProvider:
+    """The first ``n`` calls get HTTP 503, then the provider recovers."""
+    calls = [0]
+
+    def answer(request: CompletionRequest) -> str | Exception:
+        calls[0] += 1
+        return (
+            ProviderError("overloaded", retryable=True, status_code=503)
+            if calls[0] <= n
+            else (responder(request))
+        )
+
+    return MockProvider(answer)
+
+
+async def test_second_pass_recovers_from_a_short_outage(tmp_path: Path) -> None:
+    provider = _down_for(3)  # trips the switch on case 1; case 2 is not even sent
+    run, time = _outage_run(tmp_path, provider)
+    result = await run
+    assert result.status is RunStatus.COMPLETED
+    assert all(c.error is None for c in result.cases)
+    assert 60.0 in time.sleeps
+    assert len(provider.calls) == 5  # 3 failed + 2 in the second pass
+
+
+async def test_long_outage_still_ends_in_error_without_burning_calls(tmp_path: Path) -> None:
+    provider = _down_for(1000)
+    run, _ = _outage_run(tmp_path, provider)
+    result = await run
+    assert result.status is RunStatus.ERROR
+    assert {c.error.type for c in result.cases if c.error} == {"unavailable"}
+    assert len(provider.calls) == 6  # 3 per pass, instead of 5 attempts x 2 cases x 2 passes
+
+
 async def test_case_outcomes(tmp_path: Path) -> None:
     result = await _run(tmp_path, _plan())
     by_id = {c.case_id: c for c in result.cases}
