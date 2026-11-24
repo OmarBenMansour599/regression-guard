@@ -2,7 +2,7 @@ id: classify
 version: v2
 description: >
   Experimental terse variant: no category definitions, no few-shot examples.
-  Expected to regress on ambiguous emails. Useful for demonstrating regression detection.
+  Expected to regress on ambiguous emails. Useful for demonstrating regression detection. (demo)
 created_at: 2026-11-10
 
 model:
