@@ -116,6 +116,8 @@ class TrendPoint(FrozenModel):
     started_at: datetime
     prompt_version: str
     value: float
+    n: int  # cases behind the value (0: meaningless)
+    status: str  # "error": partial run, not a quality score
     fresh: bool  # real API calls only (cached answers cannot show drift)
 
 
@@ -320,7 +322,7 @@ def trend(
 ) -> list[TrendPoint]:
     limit = max(1, min(limit, MAX_TREND_POINTS))
     with history(settings) as repo:
-        series = repo.metric_series(
+        series = repo.metric_points(
             metric, app=config.name, limit=limit, prompt_version=prompt_version
         )
     return [
@@ -329,9 +331,11 @@ def trend(
             started_at=r.started_at,
             prompt_version=r.prompt_version,
             value=value,
+            n=n,
+            status=r.status,
             fresh=r.cache_hits == 0 and r.api_calls > 0,
         )
-        for r, value in series
+        for r, value, n in series
     ]
 
 

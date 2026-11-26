@@ -1545,6 +1545,10 @@
             "title": "Fresh",
             "type": "boolean"
           },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
           "prompt_version": {
             "title": "Prompt Version",
             "type": "string"
@@ -1558,6 +1562,10 @@
             "title": "Started At",
             "type": "string"
           },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
           "value": {
             "title": "Value",
             "type": "number"
@@ -1568,6 +1576,8 @@
           "started_at",
           "prompt_version",
           "value",
+          "n",
+          "status",
           "fresh"
         ],
         "title": "TrendPoint",

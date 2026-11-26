@@ -3,16 +3,9 @@ import { Link } from "react-router";
 import type { DriftReport, RunSummary } from "@/api/client";
 import { useDrift, useOverview, useRuns } from "@/api/queries";
 import { CliHint, EmptyState, ErrorState, LoadingBlock, PageHeader } from "@/components/page";
+import { PassRate, RunsTable } from "@/components/runs-table";
 import { RunStatus, VerdictBadge } from "@/components/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ago, pct, shortHash } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -76,73 +69,10 @@ function DriftValue({ drift }: { drift: DriftReport }) {
   );
 }
 
-/** A run in ERROR scored only the cases that got an answer: never show that as a real score. */
-export function PassRate({ run }: { run: RunSummary }) {
-  if (run.status !== "error") return <>{pct(run.metrics.pass_rate)}</>;
-  return (
-    <span
-      className="text-muted-foreground/60 line-through decoration-muted-foreground/40"
-      title="Not a quality score: this run failed for technical reasons, so only part of the cases were scored."
-    >
-      {pct(run.metrics.pass_rate)}
-    </span>
-  );
-}
-
 function latestPerPrompt(runs: RunSummary[]): RunSummary[] {
   const seen = new Map<string, RunSummary>();
   for (const run of runs) if (!seen.has(run.prompt_version)) seen.set(run.prompt_version, run);
   return [...seen.values()].sort((a, b) => a.prompt_version.localeCompare(b.prompt_version));
-}
-
-function RunsTable({ runs }: { runs: RunSummary[] }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Run</TableHead>
-          <TableHead>Prompt</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Pass rate</TableHead>
-          <TableHead>Verdict</TableHead>
-          <TableHead className="text-right">When</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((run) => (
-          <TableRow key={run.run_id}>
-            <TableCell>
-              <Link
-                to={`/runs/${run.run_id}`}
-                className="font-mono text-xs underline-offset-4 hover:underline"
-              >
-                {run.run_id}
-              </Link>
-            </TableCell>
-            <TableCell>{run.prompt_version}</TableCell>
-            <TableCell>
-              <RunStatus status={run.status} />
-            </TableCell>
-            <TableCell className="tabular text-right">
-              <PassRate run={run} />
-            </TableCell>
-            <TableCell>
-              {run.verdict ? (
-                <VerdictBadge verdict={run.verdict} />
-              ) : (
-                <span className="text-xs text-muted-foreground">–</span>
-              )}
-            </TableCell>
-            <TableCell className="text-right text-xs text-muted-foreground">
-              <time dateTime={run.started_at} title={run.started_at}>
-                {ago(run.started_at)}
-              </time>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
 }
 
 export function Overview() {
