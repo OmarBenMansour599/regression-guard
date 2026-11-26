@@ -7,16 +7,18 @@ Security (local tool that returns email text, ADR 0007):
 - strict security headers; FastAPI's /docs page is off (it loads scripts from a CDN).
 """
 
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import FastAPI, Query, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from regguard import __version__
 from regguard.apps.config import AppConfig
@@ -38,6 +40,40 @@ SECURITY_HEADERS = {
 }
 
 
+def _cache_control(path: str) -> str:
+    if path.startswith("/api/"):
+        return "no-store"  # always fresh data
+    if path.startswith("/assets/"):
+        return "public, max-age=31536000, immutable"  # file names carry a content hash
+    return "no-cache"  # index.html: pick up new builds
+
+
+class HeadersMiddleware:
+    """Security and cache headers, as plain ASGI.
+
+    Not ``@app.middleware("http")``: that style raises "No response returned" when the
+    browser cancels a request mid-way (seen in the browser tests).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        extra = [*SECURITY_HEADERS.items(), ("Cache-Control", _cache_control(scope["path"]))]
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in extra:
+                    headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def _operation_id(route: APIRoute) -> str:
     """Stable, readable names for the generated TypeScript client (``listRuns``)."""
     head, *rest = route.name.split("_")
@@ -57,17 +93,11 @@ def create_app(config: AppConfig, settings: Settings, *, static_dir: Path | None
         openapi_url="/api/openapi.json",
         generate_unique_id_function=_operation_id,
     )
+    # Compress JS/CSS/JSON (the built dashboard is ~3x smaller). Added first = innermost.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
-    @app.middleware("http")
-    async def security_headers(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        response = await call_next(request)
-        response.headers.update(SECURITY_HEADERS)
-        if request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-store"  # always fresh data
-        return response
+    app.add_middleware(HeadersMiddleware)
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:

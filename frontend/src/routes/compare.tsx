@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Segmented } from "@/components/segmented";
 import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -178,12 +178,15 @@ function CaseList({
     <Card className="gap-0 py-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b px-5 py-3 [.border-b]:pb-3">
         <CardTitle className="text-sm">Cases</CardTitle>
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as CaseFilter)}>
-          <TabsList>
-            <TabsTrigger value="changed">Changed {changed.length}</TabsTrigger>
-            <TabsTrigger value="all">All {diffs.length}</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <Segmented
+          label="Show cases"
+          value={filter}
+          options={[
+            { value: "changed", label: `Changed ${changed.length}` },
+            { value: "all", label: `All ${diffs.length}` },
+          ]}
+          onChange={setFilter}
+        />
       </CardHeader>
       <CardContent className="divide-y px-0">
         {shown.length === 0 && (

@@ -26,6 +26,15 @@ Version limits found:
 - **TypeScript 5.9, not 7**: `openapi-typescript` needs `^5`, `typescript-eslint` needs `<6.1`.
 - **jsdom 27, not 31**: jsdom 31 needs Node 24.15 or newer; the machine has 24.13.
 
+## Results (Phase 8 done, 2026-11-26)
+- **Startup download**: 582 kB → 174 kB, from gzip compression on the server (it was sending uncompressed). Build files get `Cache-Control: immutable`, since their names carry a content hash; the app shell gets `no-cache`. Measured: first page ready in about 110 ms, a second visit in about 30 ms, API routes 5 to 20 ms on the server.
+- **Accessibility**: an axe WCAG 2 A/AA audit runs on every page, in light and dark mode, in CI. It found and we fixed:
+  - text contrast under 4.5:1 (struck-through scores, small version text, inactive filter buttons, "(info)" in badges);
+  - tabs used without tab panels (replaced by a toggle group);
+  - `aria-expanded` on table rows;
+  - scrollable email and raw-output boxes that could not be reached by keyboard.
+- **Server**: the security and cache headers became plain ASGI middleware, because `@app.middleware("http")` raised "No response returned" when the browser cancelled a request.
+
 ## Consequences
 + One command starts everything; the CLI and CI are unchanged.
 + Frontend types cannot drift from the API unnoticed.

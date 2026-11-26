@@ -113,7 +113,8 @@ function Level({ metric }: { metric: MetricDelta }) {
         <TriangleAlert className="size-3 text-warn" aria-hidden />
       )}
       {critical ? "Critical" : "Warn"}
-      {!metric.gating && <span className="font-normal text-muted-foreground">(info)</span>}
+      {/* normal ink: grey on the tinted badge falls under the 4.5:1 minimum (axe) */}
+      {!metric.gating && <span className="font-normal">(info)</span>}
     </span>
   );
 }

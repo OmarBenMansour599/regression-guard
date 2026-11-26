@@ -61,6 +61,61 @@ jobs:
       - run: npm test
       - run: npx vite build
 
+  # Dashboard in a real browser (Phase 8e): every page in light and dark mode renders, logs no
+  # console error and passes an axe WCAG 2 A/AA audit. History is seeded with the mock
+  # provider: no API key, no cost.
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      REGGUARD_LLM_PROVIDER: mock
+      REGGUARD_REQUESTS_PER_MINUTE: "10000"
+      REGGUARD_DATABASE_URL: sqlite:///${{ runner.temp }}/e2e.db
+      REGGUARD_RUNS_DIR: ${{ runner.temp }}/runs
+      REGGUARD_CACHE_DIR: ${{ runner.temp }}/cache
+      REGGUARD_REPORTS_DIR: ${{ runner.temp }}/reports
+      CONFIG: ../examples/support-email-classifier/regguard.yaml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install
+        run: |
+          (cd backend && uv sync --locked)
+          (cd frontend && npm ci --ignore-scripts && npx playwright install --with-deps chromium)
+      - name: Build the dashboard
+        working-directory: frontend
+        run: npx vite build
+      - name: Seed a history (mock answers; FAIL verdicts are expected)
+        working-directory: backend
+        run: |
+          for prompt in v1 v2; do
+            uv run python -m regguard run -p "$prompt" --baseline main --cases-from-baseline \
+              --no-judge -c "$CONFIG" > /dev/null || true
+          done
+          uv run python -m regguard history list
+      - name: Browser tests
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: npx playwright test --project=chromium
+      - name: Upload the test report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
   # The history database must work on PostgreSQL too (ADR 0005). Locally we only run SQLite:
   # PostgreSQL drivers are compiled libraries that Windows Smart App Control may block.
   postgres:

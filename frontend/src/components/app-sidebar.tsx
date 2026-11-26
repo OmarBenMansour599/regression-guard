@@ -104,7 +104,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <HealthDot />
         {data && (
-          <p className="px-2 text-[11px] text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
+          <p className="px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
             v{data.version} · local, read-only
           </p>
         )}

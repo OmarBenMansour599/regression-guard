@@ -24,7 +24,7 @@ export function Score({
   if (run.status !== "error") return <>{value}</>;
   return (
     <span
-      className="text-muted-foreground/60 line-through decoration-muted-foreground/40"
+      className="text-muted-foreground line-through decoration-muted-foreground/60"
       title="Not a quality score: this run failed for technical reasons, so only part of the cases were scored."
     >
       {value}

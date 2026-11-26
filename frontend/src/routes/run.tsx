@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Segmented } from "@/components/segmented";
 import { dateTime, shortHash } from "@/lib/format";
 import { formatMetric, metricInfo, sortMetrics } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
@@ -86,7 +86,7 @@ function MetricsGrid({ detail }: { detail: RunDetail }) {
               <div
                 className={cn(
                   "tabular mt-1 text-2xl font-semibold tracking-tight",
-                  unreliable && "text-muted-foreground/60 line-through decoration-muted-foreground/40",
+                  unreliable && "text-muted-foreground line-through decoration-muted-foreground/60",
                 )}
               >
                 {formatMetric(name, a?.value)}
@@ -140,21 +140,21 @@ function Cases({ detail }: { detail: RunDetail }) {
     <Card className="gap-0 py-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b px-5 py-3 [.border-b]:pb-3">
         <CardTitle className="text-sm">Cases</CardTitle>
-        <Tabs
+        <Segmented
+          label="Show cases"
           value={filter}
-          onValueChange={(v) => {
+          options={[
+            { value: "all", label: `All ${counts.all}` },
+            { value: "failing", label: `Failing ${counts.failing}` },
+            { value: "errors", label: `Errors ${counts.errors}` },
+          ]}
+          onChange={(v) => {
             const next = new URLSearchParams(params);
             if (v === "all") next.delete("cases");
             else next.set("cases", v);
             setParams(next, { replace: true });
           }}
-        >
-          <TabsList>
-            <TabsTrigger value="all">All {counts.all}</TabsTrigger>
-            <TabsTrigger value="failing">Failing {counts.failing}</TabsTrigger>
-            <TabsTrigger value="errors">Errors {counts.errors}</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        />
       </CardHeader>
       <CardContent className="px-2">
         {visible.length === 0 ? (
@@ -180,16 +180,13 @@ function Cases({ detail }: { detail: RunDetail }) {
                   c.error?.type ?? (c.parsed_output ? String(c.parsed_output.category ?? "") : "—");
                 return (
                   <Fragment key={k}>
-                    <TableRow
-                      className="cursor-pointer"
-                      aria-expanded={isOpen}
-                      onClick={() => setOpen(isOpen ? null : k)}
-                    >
+                    <TableRow className="cursor-pointer" onClick={() => setOpen(isOpen ? null : k)}>
                       <TableCell>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="size-6"
+                          aria-expanded={isOpen}
                           aria-label={isOpen ? "Hide details" : "Show details"}
                         >
                           <ChevronDown

@@ -31,8 +31,14 @@ export function EmailText({ text }: { text: string | undefined }) {
       </p>
     );
   }
+  // Focusable so a long email can be scrolled with the keyboard (axe: scrollable-region).
   return (
-    <p className="max-h-64 overflow-auto rounded-lg bg-muted/50 p-3 text-sm whitespace-pre-wrap">
+    <p
+      tabIndex={0}
+      role="region"
+      aria-label="Email text"
+      className="max-h-64 overflow-auto rounded-lg bg-muted/50 p-3 text-sm whitespace-pre-wrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
       {text}
     </p>
   );
@@ -76,7 +82,11 @@ export function Answer({ result }: { result: CaseResult | undefined }) {
         <X className="size-3.5 text-fail" aria-hidden />
         Unreadable answer: a program could not use it
       </p>
-      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap">
+      <pre
+        tabIndex={0}
+        aria-label="Raw model output"
+        className="max-h-48 overflow-auto rounded-lg bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
         {result.raw_output ?? ""}
       </pre>
     </div>
