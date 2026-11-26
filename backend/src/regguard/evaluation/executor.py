@@ -136,6 +136,8 @@ class Executor:
         self.api_calls = 0
         self.retries = 0
         self.served_models: set[str] = set()  # model ids the provider says it used
+        self.served_providers: set[str] = set()  # upstream providers that answered
+        self.cost_usd = 0.0  # fresh calls only: cache hits were paid for by an earlier run
 
     def _backoff(self, attempt: int, *, status: int | None) -> float:
         """Transport glitches: full jitter in [0, ceiling].
@@ -212,6 +214,8 @@ class Executor:
         if cached is not None:
             self.cache_hits += 1
             self.served_models.add(cached.model)
+            if cached.served_by:
+                self.served_providers.add(cached.served_by)
             return CallOutcome(cached, None, 0)
 
         async with self._semaphore:
@@ -264,5 +268,8 @@ class Executor:
                 self._consecutive_failures = 0
                 self._failed_attempts_streak = 0
                 self.served_models.add(completion.model)
+                if completion.served_by:
+                    self.served_providers.add(completion.served_by)
+                self.cost_usd += completion.cost_usd or 0.0
                 self._cache.put(key, completion)
                 return CallOutcome(completion, None, attempt + 1)

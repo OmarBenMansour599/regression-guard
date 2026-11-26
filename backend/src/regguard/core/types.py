@@ -53,6 +53,8 @@ class Completion(FrozenModel):
     latency_ms: float = Field(ge=0)
     model: str
     cached: bool = False
+    served_by: str | None = None  # upstream provider that answered (OpenRouter `provider`)
+    cost_usd: float | None = None  # price of this call (OpenRouter `usage.cost`)
 
 
 class MetricScore(FrozenModel):
@@ -118,6 +120,8 @@ class ExecutionStats(FrozenModel):
     judge_cache_hits: int = 0
     judge_api_calls: int = 0
     judge_retries: int = 0
+    cost_usd: float = 0.0  # fresh app calls only: answers from the cache cost nothing
+    judge_cost_usd: float = 0.0
 
 
 class RunMeta(FrozenModel):
@@ -131,6 +135,7 @@ class RunMeta(FrozenModel):
     model: str  # model actually requested (prompt's model, or the override)
     model_override: bool = False  # True if REGGUARD_LLM_MODEL replaced the prompt's model
     served_models: tuple[str, ...] = ()  # model ids reported back by the provider
+    served_providers: tuple[str, ...] = ()  # upstream providers that answered (OpenRouter)
     params: dict[str, Any] = Field(default_factory=dict)
     selection: CaseSelection = Field(default_factory=CaseSelection)
     n_samples: int = Field(default=1, ge=1)

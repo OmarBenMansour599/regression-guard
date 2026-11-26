@@ -175,6 +175,46 @@ async def test_api_key_not_in_error_messages() -> None:
     assert "k-123" not in str(info.value)
 
 
+async def test_openrouter_provider_and_cost_are_recorded() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "model": "google/gemma-4-26b-a4b-it",
+            "provider": "PrimeIntellect",
+            "choices": [{"message": {"role": "assistant", "content": '{"a": 1}'}}],
+            "usage": {"prompt_tokens": 380, "completion_tokens": 30, "cost": 0.0000432},
+        }
+        return httpx.Response(200, json=body)
+
+    completion = await _provider(handler).complete(_request())
+    assert completion.served_by == "PrimeIntellect"
+    assert completion.cost_usd == pytest.approx(0.0000432)
+
+
+async def test_missing_or_odd_provider_and_cost_are_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "provider": "",
+            "choices": [{"message": {"role": "assistant", "content": "{}"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": "free"},
+        }
+        return httpx.Response(200, json=body)
+
+    completion = await _provider(handler).complete(_request())
+    assert completion.served_by is None and completion.cost_usd is None
+
+
+async def test_provider_routing_from_the_prompt_reaches_the_payload() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return _ok()
+
+    routing = {"provider": {"quantizations": ["bf16"], "data_collection": "deny"}}
+    await _provider(handler).complete(_request(extra=routing))
+    assert seen["provider"] == {"quantizations": ["bf16"], "data_collection": "deny"}
+
+
 async def test_unsendable_header_is_fatal_and_never_quotes_the_key() -> None:
     """httpx quotes the bad header (with the key) in its message: found in a real CI run."""
 

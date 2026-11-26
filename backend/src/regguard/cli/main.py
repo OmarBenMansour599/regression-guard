@@ -308,6 +308,8 @@ def try_once(
         "prompt_hash": prompt_cfg.content_hash[:19],
         "provider": provider.name,
         "model": c.model,
+        "served_by": c.served_by,
+        "cost_usd": c.cost_usd,
         "schema_valid": result.schema_valid,
         "output": result.parsed,
         "validation_error": result.validation_error,
@@ -325,6 +327,11 @@ def try_once(
 
 def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
+
+
+def _usd(value: float) -> str:
+    """Small amounts stay readable: $0.00046 rather than $0.00."""
+    return f"${value:.2f}" if value >= 0.01 else f"${value:.5f}"
 
 
 def _judge_cell(r: CaseResult) -> str:
@@ -376,6 +383,11 @@ def _print_summary(result: RunResult) -> None:
             f"{e.judge_retries} retries   {m.judge.get('model')} "
             f"(prompt {m.judge.get('prompt_version')})"
         )
+    if m.served_providers:
+        typer.echo(f"  served  {', '.join(m.served_providers)}")
+    total_cost = e.cost_usd + e.judge_cost_usd
+    if total_cost > 0:
+        typer.echo(f"  cost    {_usd(total_cost)} (fresh calls; cached answers are free)")
     typer.echo("")
     for key in ("pass_rate", "schema_valid", "label_exact", "summary_format", "error_rate"):
         if key in agg:

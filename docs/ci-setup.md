@@ -77,14 +77,16 @@ The comment then warns reviewers that the baseline moved, and they can read the 
 
 ## 6. Cost
 
-The free tier allows about 50 API calls per day (shared with your local runs).
+Since `v3` (ADR 0008), the gate runs on the paid Gemma 4 26B, pinned to providers that serve it in bf16 and do not train on the data. A one-time purchase of $10 of OpenRouter credits covers years of use, and also raises the free daily limit (still used by the judge) from 50 to 1,000 requests.
 
-| What | API calls |
-|---|---|
-| A PR changing one prompt (12 cases, no judge) | about 12, capped at 30 including retries |
-| Pushing again without changing the prompt | 0 (cached) |
-| Daily monitor (fresh calls) | about 12, capped at 30 |
-| Run by hand with the judge | about 24, capped at 50 |
+| What | API calls | Cost (prices of 2026-11-27) |
+|---|---|---|
+| A PR changing one prompt (12 cases, no judge) | about 12, capped at 30 including retries | about $0.0005 |
+| Pushing again without changing the prompt | 0 (cached) | $0 |
+| Daily monitor (fresh calls) | about 12, capped at 30 | about $0.0005, so about $0.20 a year |
+| Run by hand with the judge | about 24, capped at 50 | about $0.0005 (the judge is free) |
+
+Every run shows what it cost (CLI `cost` line, run page in the dashboard) and which provider answered. Check the balance at openrouter.ai, under Credits.
 
 ## 7. Daily monitor
 

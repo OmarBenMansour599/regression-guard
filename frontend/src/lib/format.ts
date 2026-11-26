@@ -18,6 +18,11 @@ export function fixedEven(value: number, digits: number): string {
   return (rounded / scale).toFixed(digits);
 }
 
+/** Small amounts stay readable: $0.00046 rather than $0.00 (same as the CLI). */
+export function usd(value: number): string {
+  return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(5)}`;
+}
+
 export function num(value: number | null | undefined, digits = 2): string {
   return value === null || value === undefined ? "–" : value.toFixed(digits);
 }
