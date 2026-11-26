@@ -18,6 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 # PostgreSQL driver for the history database (Linux servers/CI). Not needed for local SQLite.
 postgres = ["psycopg[binary]>=3.2,<4"]
+# Local dashboard and its API (`regguard serve`). Not needed by the CLI or the CI gate.
+server = ["fastapi>=0.165,<1", "uvicorn>=0.54,<1"]
 
 [project.scripts]
 regguard = "regguard.cli.main:app"
@@ -31,6 +33,9 @@ dev = [
     "mypy>=1.13",
     "types-pyyaml",
     "import-linter>=2.1",
+    # the `server` extra, so tests and mypy cover the API
+    "fastapi>=0.165,<1",
+    "uvicorn>=0.54,<1",
 ]
 
 [tool.uv]
@@ -81,6 +86,7 @@ name = "Layered architecture (higher layers may import lower ones, never the rev
 type = "layers"
 layers = [
     "regguard.cli",
+    "regguard.api",
     "regguard.services",
     "regguard.evaluation | regguard.comparison | regguard.reporting | regguard.notifications",
     "regguard.metrics",

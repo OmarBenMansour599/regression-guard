@@ -34,7 +34,7 @@ class ReportFiles:
     notes: list[str] = field(default_factory=list)
 
 
-def _dataset_context(
+def dataset_context(
     config: AppConfig, run: RunResult
 ) -> tuple[dict[str, Mapping[str, str]], dict[str, Mapping[str, Any]], list[str]]:
     """Inputs and golden labels of the run's cases, only if the dataset is unchanged."""
@@ -77,7 +77,7 @@ def write_report(
     comparison: Comparison | None = None,
     baseline: RunResult | None = None,
 ) -> ReportFiles:
-    inputs, expected, notes = _dataset_context(config, run)
+    inputs, expected, notes = dataset_context(config, run)
     trends, trend_notes = _trends(settings, run)
     data = ReportData(
         run=run,
