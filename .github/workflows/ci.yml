@@ -69,12 +69,18 @@ jobs:
     env:
       REGGUARD_LLM_PROVIDER: mock
       REGGUARD_REQUESTS_PER_MINUTE: "10000"
-      REGGUARD_DATABASE_URL: sqlite:///${{ runner.temp }}/e2e.db
-      REGGUARD_RUNS_DIR: ${{ runner.temp }}/runs
-      REGGUARD_CACHE_DIR: ${{ runner.temp }}/cache
-      REGGUARD_REPORTS_DIR: ${{ runner.temp }}/reports
       CONFIG: ../examples/support-email-classifier/regguard.yaml
     steps:
+      # The `runner` context is not allowed in job-level `env:` (it made the whole file
+      # invalid): set the temp paths from the shell instead, for all later steps.
+      - name: Temp paths for the seeded history
+        run: |
+          {
+            echo "REGGUARD_DATABASE_URL=sqlite:///$RUNNER_TEMP/e2e.db"
+            echo "REGGUARD_RUNS_DIR=$RUNNER_TEMP/runs"
+            echo "REGGUARD_CACHE_DIR=$RUNNER_TEMP/cache"
+            echo "REGGUARD_REPORTS_DIR=$RUNNER_TEMP/reports"
+          } >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
