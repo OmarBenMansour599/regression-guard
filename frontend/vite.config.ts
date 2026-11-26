@@ -15,5 +15,10 @@ export default defineConfig({
     // `npm run dev` talks to `regguard serve` running on port 8000.
     proxy: { "/api": { target: "http://127.0.0.1:8000", changeOrigin: false } },
   },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.ts"] },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.{ts,tsx}"], // e2e/ is Playwright's
+  },
 });

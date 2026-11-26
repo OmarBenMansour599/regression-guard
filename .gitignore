@@ -49,3 +49,7 @@ docs/report/*.toc
 
 # Built dashboard (npm run build in frontend/)
 backend/src/regguard/web/
+
+# Playwright browser-test output (frontend/)
+frontend/test-results/
+frontend/playwright-report/

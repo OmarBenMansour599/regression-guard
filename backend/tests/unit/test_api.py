@@ -221,8 +221,19 @@ def test_serves_the_built_dashboard_with_client_side_routes(
     assert client.get("/runs/r-v2").text == "<div id=root></div>"  # deep link -> app shell
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert client.get("/favicon.svg").text == "<svg/>"
+    # hashed build files are cached for good; the app shell is revalidated
+    assert "immutable" in client.get("/assets/app.js").headers["cache-control"]
+    assert client.get("/runs/r-v2").headers["cache-control"] == "no-cache"
     assert "outside" not in client.get("/..%2Fsecret.txt").text  # no path traversal
     assert client.get("/api/runs").status_code == 200  # API still wins over the app shell
+
+
+def test_responses_are_compressed(client: TestClient) -> None:
+    big = client.get("/api/runs/r-v2", headers={"Accept-Encoding": "gzip"})
+    assert big.headers.get("content-encoding") == "gzip"
+    assert big.json()["run"]["meta"]["run_id"] == "r-v2"  # still decodes fine
+    small = client.get("/api/health", headers={"Accept-Encoding": "gzip"})
+    assert "content-encoding" not in small.headers  # tiny bodies are not worth it
 
 
 def test_without_a_built_dashboard_the_root_explains(client: TestClient) -> None:

@@ -21,6 +21,7 @@ CHECKS: list[tuple[str, list[str]]] = [
     ("ruff lint", [PY, "-m", "ruff", "check", "."]),
     ("mypy", [PY, "-m", "mypy"]),
     ("import layers", [PY, "-c", LINT_IMPORTS]),
+    ("workflows", [PY, "scripts/check_workflows.py"]),
     ("pytest", [PY, "-m", "pytest", "-q"]),
 ]
 
