@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from regguard.core.errors import ProviderError
+from regguard.core.types import Completion, Usage
 from regguard.evaluation.cache import CacheMode, ResponseCache
 from regguard.evaluation.executor import CallBudget, Executor, RateLimiter, RetryPolicy
 from regguard.providers.base import CompletionRequest, Message
@@ -177,6 +178,35 @@ async def test_auth_error_aborts_whole_run(tmp_path: Path) -> None:
     assert second.error is not None
     assert second.error.type == "aborted"
     assert len(provider.calls) == 1  # no further calls after abort
+
+
+async def test_cost_counts_fresh_calls_only_and_providers_are_tracked(tmp_path: Path) -> None:
+    paid = Completion(
+        text="ok",
+        usage=Usage(prompt_tokens=10, completion_tokens=2),
+        latency_ms=5.0,
+        model="m",
+        served_by="PrimeIntellect",
+        cost_usd=0.0001,
+    )
+
+    class Paid(MockProvider):
+        async def complete(self, request: CompletionRequest) -> Completion:
+            self.calls.append(request)
+            return paid
+
+    provider = Paid(lambda _: "unused")
+    first, _ = make_executor(provider, tmp_path, mode=CacheMode.READ_WRITE)
+    await first.call(REQUEST)
+    assert first.cost_usd == pytest.approx(0.0001)
+    assert first.served_providers == {"PrimeIntellect"}
+
+    second, _ = make_executor(provider, tmp_path, mode=CacheMode.READ_WRITE)
+    outcome = await second.call(REQUEST)  # same request: answered from the cache
+    assert outcome.completion is not None and outcome.completion.cached
+    assert second.cost_usd == 0.0  # paid for by the first run
+    assert second.served_providers == {"PrimeIntellect"}  # still says who answered
+    assert len(provider.calls) == 1
 
 
 OUTAGE = RetryPolicy(max_retries=4, outage_after_failures=3, second_pass_delay_s=60.0)

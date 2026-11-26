@@ -152,9 +152,13 @@ def _parse_response(
         prompt_tokens=int(raw_usage.get("prompt_tokens") or 0),
         completion_tokens=int(raw_usage.get("completion_tokens") or 0),
     )
+    provider = body.get("provider")  # OpenRouter: which upstream answered
+    cost = raw_usage.get("cost")  # OpenRouter: price of this call in USD
     return Completion(
         text=text,
         usage=usage,
         latency_ms=latency_ms,
         model=str(body.get("model") or request.model),
+        served_by=provider if isinstance(provider, str) and provider else None,
+        cost_usd=float(cost) if isinstance(cost, int | float) and cost >= 0 else None,
     )

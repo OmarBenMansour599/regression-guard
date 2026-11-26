@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { ago, fixedEven, num, pct, shortHash } from "./format";
+import { ago, fixedEven, num, pct, shortHash, usd } from "./format";
 import { formatDelta, formatMetric, metricInfo, sortMetrics } from "./metrics";
 
 describe("metrics", () => {
@@ -51,6 +51,11 @@ describe("format", () => {
     expect(fixedEven(0.5, 0)).toBe("0");
     expect(fixedEven(1.5, 0)).toBe("2");
     expect(fixedEven(0.1234, 3)).toBe("0.123");
+  });
+
+  test("money stays readable at tiny amounts", () => {
+    expect(usd(0.00046)).toBe("$0.00046");
+    expect(usd(1.234)).toBe("$1.23");
   });
 
   test("short hash drops the algorithm prefix", () => {

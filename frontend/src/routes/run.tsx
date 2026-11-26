@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Segmented } from "@/components/segmented";
-import { dateTime, shortHash } from "@/lib/format";
+import { dateTime, shortHash, usd } from "@/lib/format";
 import { formatMetric, metricInfo, sortMetrics } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +53,13 @@ function Facts({ detail }: { detail: RunDetail }) {
     ["Calls", `${e.api_calls} API · ${e.cache_hits} cached · ${e.retries} retries`],
     ["Code", m.git_sha ? <span className="font-mono text-xs">{m.git_sha.slice(0, 12)}</span> : "–"],
   ];
+  if (m.served_providers.length > 0) {
+    facts.push(["Served by", m.served_providers.join(", ")]);
+  }
+  const cost = e.cost_usd + e.judge_cost_usd;
+  if (cost > 0) {
+    facts.push(["Cost", <span title="Fresh calls only; answers from the cache are free">{usd(cost)}</span>]);
+  }
   if (m.judge) {
     facts.push(["Judge", `${String(m.judge.model ?? "")} · prompt ${String(m.judge.prompt_version ?? "")}`]);
   }

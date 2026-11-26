@@ -665,6 +665,11 @@
             "title": "Cache Mode",
             "type": "string"
           },
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
           "judge_api_calls": {
             "default": 0,
             "title": "Judge Api Calls",
@@ -674,6 +679,11 @@
             "default": 0,
             "title": "Judge Cache Hits",
             "type": "integer"
+          },
+          "judge_cost_usd": {
+            "default": 0.0,
+            "title": "Judge Cost Usd",
+            "type": "number"
           },
           "judge_retries": {
             "default": 0,
@@ -693,7 +703,9 @@
           "retries",
           "judge_cache_hits",
           "judge_api_calls",
-          "judge_retries"
+          "judge_retries",
+          "cost_usd",
+          "judge_cost_usd"
         ],
         "title": "ExecutionStats",
         "type": "object"
@@ -1307,6 +1319,14 @@
             "title": "Served Models",
             "type": "array"
           },
+          "served_providers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Served Providers",
+            "type": "array"
+          },
           "started_at": {
             "format": "date-time",
             "title": "Started At",
@@ -1328,6 +1348,7 @@
           "model",
           "model_override",
           "served_models",
+          "served_providers",
           "params",
           "selection",
           "n_samples",

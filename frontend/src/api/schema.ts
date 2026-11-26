@@ -392,6 +392,11 @@ export interface components {
              */
             cache_mode: string;
             /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
              * Judge Api Calls
              * @default 0
              */
@@ -401,6 +406,11 @@ export interface components {
              * @default 0
              */
             judge_cache_hits: number;
+            /**
+             * Judge Cost Usd
+             * @default 0
+             */
+            judge_cost_usd: number;
             /**
              * Judge Retries
              * @default 0
@@ -650,6 +660,11 @@ export interface components {
              * @default []
              */
             served_models: string[];
+            /**
+             * Served Providers
+             * @default []
+             */
+            served_providers: string[];
             /**
              * Started At
              * Format: date-time

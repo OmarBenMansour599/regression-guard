@@ -35,8 +35,22 @@ def _write(tmp_path: Path, data: dict[str, Any], name: str = "v9.yaml") -> Path:
 
 def test_example_prompts_are_valid() -> None:
     prompts = discover_prompts(PROMPTS_DIR)
-    assert set(prompts) == {"v1", "v2"}
+    assert set(prompts) == {"v1", "v2", "v3"}
     assert prompts["v1"].content_hash != prompts["v2"].content_hash
+
+
+def test_v3_is_v1_on_the_paid_model_with_pinned_routing() -> None:
+    """ADR 0008: only the model block differs, so the gate measures the model switch alone."""
+    v1 = load_prompt_version(PROMPTS_DIR, "v1")
+    v3 = load_prompt_version(PROMPTS_DIR, "v3")
+    assert (v3.system, v3.user_template, v3.few_shot) == (v1.system, v1.user_template, v1.few_shot)
+    assert v3.model.model == "google/gemma-4-26b-a4b-it"  # paid: not the overloaded free pool
+    assert v3.model.extra["provider"] == {
+        "quantizations": ["bf16"],
+        "data_collection": "deny",
+        "require_parameters": True,
+    }
+    assert v3.content_hash != v1.content_hash  # routing is part of the fingerprint
 
 
 def test_hash_is_stable_across_loads() -> None:

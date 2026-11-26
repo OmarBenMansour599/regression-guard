@@ -72,6 +72,13 @@ describe("Run page", () => {
     expect(screen.getByText(/\[\{"category": "general"/)).toBeTruthy();
   });
 
+  test("shows which provider answered and what the run cost", async () => {
+    mockApi({ "/api/runs/20261118T112155Z-edd66e": runDetail() });
+    renderAt("/runs/20261118T112155Z-edd66e", "/runs/:runId", <Run />);
+    expect(await screen.findByText("Parasail")).toBeTruthy();
+    expect(screen.getByText("$0.00046")).toBeTruthy();
+  });
+
   test("email text with markup is shown as text, never run", async () => {
     mockApi({ "/api/runs/20261118T112155Z-edd66e": runDetail() });
     const { container } = renderAt("/runs/20261118T112155Z-edd66e", "/runs/:runId", <Run />);
