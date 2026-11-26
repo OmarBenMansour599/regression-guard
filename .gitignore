@@ -46,3 +46,6 @@ docs/report/*.toc
 
 # Browser screenshots taken by the AI assistant (may show email text)
 .playwright-mcp/
+
+# Built dashboard (npm run build in frontend/)
+backend/src/regguard/web/

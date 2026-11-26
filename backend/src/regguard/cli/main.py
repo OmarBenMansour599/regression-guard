@@ -1101,6 +1101,24 @@ def serve(
     uvicorn.run(application, host=host, port=port, log_level="warning")
 
 
+@app.command("openapi")
+def openapi_cmd(
+    out: Annotated[Path, typer.Option(help="Write the OpenAPI JSON here.")] = Path("openapi.json"),
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Write the dashboard API's OpenAPI description (the frontend generates its types)."""
+    try:
+        from regguard.api.app import create_app
+    except ImportError as exc:
+        raise _fail(
+            f"the server packages are not installed ({exc.name}): run `uv sync --extra server`",
+            EXIT_CONFIG_ERROR,
+        ) from exc
+    schema = create_app(_load_config(config), load_settings()).openapi()
+    out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    typer.echo(f"OpenAPI: {out}")
+
+
 # --- CI gate (Phase 9) -------------------------------------------------------------------
 
 

@@ -29,6 +29,38 @@ jobs:
       - run: uv sync --locked
       - run: uv run python scripts/check.py
 
+  # Dashboard (Phase 8, ADR 0007): type check, lint, tests, build, and the TypeScript API
+  # types must match the backend's OpenAPI description (regenerate: see docs/dashboard.md).
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: npm ci --ignore-scripts
+      - name: API types match the backend
+        run: |
+          (cd ../backend && uv sync --locked && uv run python -m regguard openapi \
+            --out ../frontend/openapi.json -c ../examples/support-email-classifier/regguard.yaml)
+          npm run gen:api
+          git diff --exit-code -- openapi.json src/api/schema.ts \
+            || { echo "::error::API types are out of date: run the commands in docs/dashboard.md"; exit 1; }
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx vite build
+
   # The history database must work on PostgreSQL too (ADR 0005). Locally we only run SQLite:
   # PostgreSQL drivers are compiled libraries that Windows Smart App Control may block.
   postgres:
