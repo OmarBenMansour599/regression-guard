@@ -4,6 +4,8 @@ import { drift, overview, runPage, runSummary } from "@/test/fixtures";
 import { mockApi, renderPage } from "@/test/render";
 import { Overview } from "./overview";
 
+// PassRate and RunsTable now live in @/components/runs-table and are tested through this page.
+
 describe("Overview page", () => {
   test("shows the latest verdict, baseline, drift and recent runs", async () => {
     mockApi({

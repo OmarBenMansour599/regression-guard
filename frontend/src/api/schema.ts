@@ -734,6 +734,8 @@ export interface components {
         TrendPoint: {
             /** Fresh */
             fresh: boolean;
+            /** N */
+            n: number;
             /** Prompt Version */
             prompt_version: string;
             /** Run Id */
@@ -743,6 +745,8 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
+            /** Status */
+            status: string;
             /** Value */
             value: number;
         };

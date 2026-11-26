@@ -11,25 +11,13 @@ export const routes = [
     HydrateFallback: () => null, // client-only app: nothing to show before the first route loads
     children: [
       { index: true, lazy: async () => ({ Component: (await import("@/routes/overview")).Overview }) },
-      {
-        path: "runs",
-        lazy: async () => ({ Component: (await import("@/routes/coming-soon")).RunsSoon }),
-      },
-      {
-        path: "runs/:runId",
-        lazy: async () => ({ Component: (await import("@/routes/coming-soon")).RunSoon }),
-      },
-      {
-        path: "compare",
-        lazy: async () => ({ Component: (await import("@/routes/coming-soon")).CompareSoon }),
-      },
-      {
-        path: "trends",
-        lazy: async () => ({ Component: (await import("@/routes/coming-soon")).TrendsSoon }),
-      },
+      { path: "runs", lazy: async () => ({ Component: (await import("@/routes/runs")).Runs }) },
+      { path: "runs/:runId", lazy: async () => ({ Component: (await import("@/routes/run")).Run }) },
+      { path: "compare", lazy: async () => ({ Component: (await import("@/routes/compare")).Compare }) },
+      { path: "trends", lazy: async () => ({ Component: (await import("@/routes/trends")).Trends }) },
       {
         path: "baselines",
-        lazy: async () => ({ Component: (await import("@/routes/coming-soon")).BaselinesSoon }),
+        lazy: async () => ({ Component: (await import("@/routes/baselines")).Baselines }),
       },
       { path: "*", lazy: async () => ({ Component: (await import("@/routes/not-found")).NotFound }) },
     ],

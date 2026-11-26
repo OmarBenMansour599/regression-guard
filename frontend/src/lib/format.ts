@@ -4,6 +4,20 @@ export function pct(value: number | null | undefined, digits = 1): string {
   return value === null || value === undefined ? "–" : `${(value * 100).toFixed(digits)}%`;
 }
 
+/**
+ * Fixed decimals rounded half-to-even, like Python's format(): 0.0625 -> "0.062".
+ * The CLI and the PR comment print p-values with Python, so the dashboard must match.
+ */
+export function fixedEven(value: number, digits: number): string {
+  const scale = 10 ** digits;
+  const scaled = value * scale;
+  const floor = Math.floor(scaled);
+  const rest = scaled - floor;
+  const rounded =
+    Math.abs(rest - 0.5) < 1e-9 ? (floor % 2 === 0 ? floor : floor + 1) : Math.round(scaled);
+  return (rounded / scale).toFixed(digits);
+}
+
 export function num(value: number | null | undefined, digits = 2): string {
   return value === null || value === undefined ? "–" : value.toFixed(digits);
 }

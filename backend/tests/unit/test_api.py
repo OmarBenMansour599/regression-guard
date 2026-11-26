@@ -137,6 +137,13 @@ def test_trends_and_drift(client: TestClient) -> None:
     assert [p["run_id"] for p in points] == ["r-base", "r-v2", "r-v1-b", "r-err"]  # oldest first
     v1 = client.get("/api/trends", params={"metric": "schema_valid", "prompt_version": "v1"})
     assert [p["prompt_version"] for p in v1.json()] == ["v1", "v1", "v1"]
+    # each point says whether it is a real score: the ERROR run is flagged, n is the sample size
+    assert [(p["status"], p["n"]) for p in points] == [
+        ("completed", 12),
+        ("completed", 12),
+        ("completed", 12),
+        ("error", 12),  # its failures are wrong labels, so all 12 outputs were scored
+    ]
     drift = client.get("/api/drift").json()
     assert drift["baseline_name"] == "main" and drift["status"] == "insufficient"
 

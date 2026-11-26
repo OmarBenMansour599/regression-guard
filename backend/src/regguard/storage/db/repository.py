@@ -234,6 +234,27 @@ class HistoryRepository:
             rows = [(_record(run), value) for run, value in session.execute(query).tuples()]
         return list(reversed(rows))
 
+    def metric_points(
+        self,
+        metric: str,
+        *,
+        app: str | None = None,
+        limit: int = 20,
+        prompt_version: str | None = None,
+    ) -> list[tuple[RunRecord, float, int]]:
+        """Like ``metric_series`` plus each value's sample size ``n``, oldest first."""
+        query = (
+            select(EvalRunRow, RunMetricRow.value, RunMetricRow.n)
+            .join(RunMetricRow, RunMetricRow.run_id == EvalRunRow.run_id)
+            .where(RunMetricRow.name == metric)
+            .order_by(EvalRunRow.started_at.desc())
+            .limit(limit)
+        )
+        query = self._filtered(query, app, prompt_version, None)
+        with Session(self.engine) as session:
+            rows = [(_record(run), value, n) for run, value, n in session.execute(query).tuples()]
+        return list(reversed(rows))
+
     def load_runs(self, *, app: str) -> list[RunResult]:
         """Every stored run of an app, oldest first (input to drift detection)."""
         query = (

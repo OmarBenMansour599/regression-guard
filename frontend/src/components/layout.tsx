@@ -21,11 +21,12 @@ export function Layout() {
             <ThemeToggle />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        {/* SidebarInset is already the page's <main> landmark */}
+        <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <Suspense fallback={<LoadingBlock className="h-64" />}>
             <Outlet />
           </Suspense>
-        </main>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
