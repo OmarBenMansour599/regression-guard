@@ -43,3 +43,6 @@ docs/report/*.toc
 
 # Claude Code local overrides
 .claude/settings.local.json
+
+# Browser screenshots taken by the AI assistant (may show email text)
+.playwright-mcp/
