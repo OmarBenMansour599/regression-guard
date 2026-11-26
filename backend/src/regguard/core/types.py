@@ -13,7 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class FrozenModel(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # Serialized output always contains defaulted fields: describe them as required in the
+    # API schema, so the generated TypeScript types are exact (dashboard, Phase 8).
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", json_schema_serialization_defaults_required=True
+    )
 
 
 class RunStatus(StrEnum):
