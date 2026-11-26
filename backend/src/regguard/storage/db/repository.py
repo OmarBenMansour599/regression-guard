@@ -2,12 +2,15 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, TypeVar
 
-from sqlalchemy import Engine, delete, func, select
+from sqlalchemy import Engine, Select, delete, func, select
 from sqlalchemy.orm import Session
 
 from regguard.core.types import Comparison, RunResult
 from regguard.storage.db.models import CaseResultRow, ComparisonRow, EvalRunRow, RunMetricRow
+
+_T = TypeVar("_T", bound=tuple[Any, ...])
 
 
 @dataclass(frozen=True)
@@ -137,16 +140,86 @@ class HistoryRepository:
             )
             return [Comparison.model_validate_json(r.comparison_json) for r in rows]
 
-    def list_runs(self, *, app: str | None = None, limit: int = 20) -> list[RunRecord]:
-        """Newest first."""
-        query = select(EvalRunRow).order_by(EvalRunRow.started_at.desc()).limit(limit)
+    @staticmethod
+    def _filtered(
+        query: Select[_T], app: str | None, prompt_version: str | None, status: str | None
+    ) -> Select[_T]:
         if app is not None:
             query = query.where(EvalRunRow.app == app)
+        if prompt_version is not None:
+            query = query.where(EvalRunRow.prompt_version == prompt_version)
+        if status is not None:
+            query = query.where(EvalRunRow.status == status)
+        return query
+
+    def latest_verdicts(self, run_ids: list[str]) -> dict[str, tuple[str, str | None]]:
+        """run id -> (verdict, baseline name) of its most recent stored comparison."""
+        if not run_ids:
+            return {}
+        query = (
+            select(
+                ComparisonRow.candidate_run_id, ComparisonRow.verdict, ComparisonRow.baseline_name
+            )
+            .where(ComparisonRow.candidate_run_id.in_(run_ids))
+            .order_by(ComparisonRow.created_at)
+        )
+        with Session(self.engine) as session:
+            return {run_id: (verdict, name) for run_id, verdict, name in session.execute(query)}
+
+    def list_runs(
+        self,
+        *,
+        app: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        prompt_version: str | None = None,
+        status: str | None = None,
+    ) -> list[RunRecord]:
+        """Newest first."""
+        query = self._filtered(select(EvalRunRow), app, prompt_version, status)
+        query = query.order_by(EvalRunRow.started_at.desc()).limit(limit).offset(offset)
         with Session(self.engine) as session:
             return [_record(r) for r in session.scalars(query)]
 
+    def count_matching(
+        self,
+        *,
+        app: str | None = None,
+        prompt_version: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        query = self._filtered(
+            select(func.count()).select_from(EvalRunRow), app, prompt_version, status
+        )
+        with Session(self.engine) as session:
+            return session.scalar(query) or 0
+
+    def prompt_versions(self, *, app: str) -> list[str]:
+        """Prompt versions that have at least one recorded run, sorted."""
+        query = select(EvalRunRow.prompt_version).where(EvalRunRow.app == app).distinct()
+        with Session(self.engine) as session:
+            return sorted(session.scalars(query))
+
+    def metric_values(self, run_ids: list[str], names: list[str]) -> dict[str, dict[str, float]]:
+        """run id -> {metric name -> value} for the given runs and metrics."""
+        if not run_ids or not names:
+            return {}
+        query = select(RunMetricRow.run_id, RunMetricRow.name, RunMetricRow.value).where(
+            RunMetricRow.run_id.in_(run_ids), RunMetricRow.name.in_(names)
+        )
+        values: dict[str, dict[str, float]] = {}
+        with Session(self.engine) as session:
+            for run_id, name, value in session.execute(query).tuples():
+                values.setdefault(run_id, {})[name] = value
+        return values
+
     def metric_series(
-        self, metric: str, *, app: str | None = None, limit: int = 20
+        self,
+        metric: str,
+        *,
+        app: str | None = None,
+        limit: int = 20,
+        prompt_version: str | None = None,
     ) -> list[tuple[RunRecord, float]]:
         """The most recent ``limit`` values of a metric, oldest first."""
         query = (
@@ -156,8 +229,7 @@ class HistoryRepository:
             .order_by(EvalRunRow.started_at.desc())
             .limit(limit)
         )
-        if app is not None:
-            query = query.where(EvalRunRow.app == app)
+        query = self._filtered(query, app, prompt_version, None)
         with Session(self.engine) as session:
             rows = [(_record(run), value) for run, value in session.execute(query).tuples()]
         return list(reversed(rows))

@@ -1061,6 +1061,46 @@ def notify_test() -> None:
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
 
+# --- dashboard (Phase 8) -----------------------------------------------------------------
+
+LOCAL_HOSTS = ("127.0.0.1", "localhost")
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "web"  # built frontend (8c)
+
+
+@app.command("serve")
+def serve(
+    port: Annotated[int, typer.Option(min=1024, max=65535, help="Port to listen on.")] = 8000,
+    host: Annotated[
+        str, typer.Option(help="127.0.0.1 or localhost (local only until Phase 10).")
+    ] = "127.0.0.1",
+    static_dir: Annotated[
+        Path | None, typer.Option(help="Built dashboard to serve (default: the packaged one).")
+    ] = None,
+    config: ConfigOption = Path("regguard.yaml"),
+) -> None:
+    """Start the local, read-only dashboard and its API (needs: uv sync --extra server)."""
+    if host not in LOCAL_HOSTS:
+        raise _fail(
+            "the dashboard is local only for now: use --host 127.0.0.1 (no login yet; "
+            "it shows email text)",
+            EXIT_CONFIG_ERROR,
+        )
+    try:
+        import uvicorn
+
+        from regguard.api.app import create_app
+    except ImportError as exc:
+        raise _fail(
+            f"the server packages are not installed ({exc.name}): run `uv sync --extra server`",
+            EXIT_CONFIG_ERROR,
+        ) from exc
+    settings = load_settings()
+    cfg = _load_config(config)
+    application = create_app(cfg, settings, static_dir=static_dir or DASHBOARD_DIR)
+    typer.echo(f"RegressionGuard dashboard: http://{host}:{port}  (Ctrl+C to stop)")
+    uvicorn.run(application, host=host, port=port, log_level="warning")
+
+
 # --- CI gate (Phase 9) -------------------------------------------------------------------
 
 

@@ -38,5 +38,9 @@ class ProviderError(RegGuardError):
         self.fatal = fatal
 
 
+class NotFoundError(RegGuardError):
+    """A requested run, baseline or other record does not exist."""
+
+
 class ComparisonError(RegGuardError):
     """Runs cannot be compared (e.g. incompatible dataset versions)."""
