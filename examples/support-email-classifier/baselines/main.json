@@ -2,36 +2,60 @@
   "header": {
     "name": "main",
     "app": "support-email-classifier",
-    "source_run_id": "20261118T112032Z-a635b1",
-    "promoted_at": "2026-11-18T11:21:47.945130Z",
-    "git_sha": "79f91f1dd30600f18c03abe407cee1f8991329f2-dirty",
-    "note": "v1, judge v2",
+    "source_run_id": "20261126T160759Z-f15f1a",
+    "promoted_at": "2026-11-26T16:12:09.086157Z",
+    "git_sha": "b8be15ea8069284856ed3561079167fe1f67124a",
+    "note": "v3: paid Gemma 4 26B, bf16, no data collection (ADR 0008)",
     "regguard_version": "0.1.0"
   },
   "run": {
     "meta": {
-      "run_id": "20261118T112032Z-a635b1",
+      "run_id": "20261126T160759Z-f15f1a",
       "app": "support-email-classifier",
-      "prompt_version": "v1",
-      "prompt_hash": "sha256:1b01bf65347781466283896d2387a6756049c6fbd4bf6ca5a1db62a803d61014",
+      "prompt_version": "v3",
+      "prompt_hash": "sha256:883d58bc3a252f17b043dacb47c53de98c329bea0b9c78b5483b64183a9169e0",
       "dataset_version": "v1",
       "dataset_hash": "sha256:35b18b00df81de0b64b7d792df342c3143141afdc66c22810aebecc39e2aefdf",
       "provider": "openai_compatible",
-      "model": "google/gemma-4-26b-a4b-it:free",
+      "model": "google/gemma-4-26b-a4b-it",
       "model_override": false,
       "served_models": [
-        "google/gemma-4-26b-a4b-it:free"
+        "google/gemma-4-26b-a4b-it"
+      ],
+      "served_providers": [
+        "Parasail"
       ],
       "params": {
         "temperature": 0.0,
         "max_tokens": 200,
         "seed": 42,
         "json_mode": true,
-        "extra": {}
+        "extra": {
+          "provider": {
+            "quantizations": [
+              "bf16"
+            ],
+            "data_collection": "deny",
+            "require_parameters": true
+          }
+        }
       },
       "selection": {
-        "limit": 12,
-        "ids": [],
+        "limit": null,
+        "ids": [
+          "email-0003",
+          "email-0005",
+          "email-0006",
+          "email-0007",
+          "email-0011",
+          "email-0012",
+          "email-0013",
+          "email-0015",
+          "email-0017",
+          "email-0019",
+          "email-0021",
+          "email-0023"
+        ],
         "tags": [],
         "seed": 0
       },
@@ -55,12 +79,14 @@
       ],
       "execution": {
         "cache_mode": "read-write",
-        "cache_hits": 12,
-        "api_calls": 0,
+        "cache_hits": 0,
+        "api_calls": 12,
         "retries": 0,
-        "judge_cache_hits": 0,
-        "judge_api_calls": 12,
-        "judge_retries": 0
+        "judge_cache_hits": 8,
+        "judge_api_calls": 4,
+        "judge_retries": 0,
+        "cost_usd": 0.00070667,
+        "judge_cost_usd": 0.0
       },
       "judge": {
         "model": "nvidia/nemotron-3.5-super-vl:free",
@@ -79,10 +105,10 @@
           }
         }
       },
-      "git_sha": "79f91f1dd30600f18c03abe407cee1f8991329f2-dirty",
+      "git_sha": "b8be15ea8069284856ed3561079167fe1f67124a",
       "trigger": "manual",
-      "started_at": "2026-11-18T11:20:32.622562Z",
-      "finished_at": "2026-11-18T11:21:18.437352Z",
+      "started_at": "2026-11-26T16:07:59.154011Z",
+      "finished_at": "2026-11-26T16:09:01.240105Z",
       "regguard_version": "0.1.0"
     },
     "status": "completed",
@@ -136,12 +162,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1572.0205000252463,
+        "latency_ms": 908.5001000203192,
         "usage": {
-          "prompt_tokens": 380,
-          "completion_tokens": 26
+          "prompt_tokens": 412,
+          "completion_tokens": 27
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
@@ -152,17 +178,17 @@
             "prompt_tokens": 1157,
             "completion_tokens": 253
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
       {
         "case_id": "email-0005",
         "sample_idx": 0,
-        "raw_output": "{\"category\": \"technical\", \"summary\": \"The customer is reporting that all API requests are returning 500 Internal Server Errors despite no changes to their configuration.\"}",
+        "raw_output": "{\"category\": \"technical\", \"summary\": \"The customer is reporting that API requests are returning 500 Internal Server Errors despite no changes to their configuration.\"}",
         "parsed_output": {
           "category": "technical",
-          "summary": "The customer is reporting that all API requests are returning 500 Internal Server Errors despite no changes to their configuration."
+          "summary": "The customer is reporting that API requests are returning 500 Internal Server Errors despite no changes to their configuration."
         },
         "scores": [
           {
@@ -185,13 +211,13 @@
             "value": 1.0,
             "passed": true,
             "detail": {
-              "words": 20,
+              "words": 19,
               "problems": []
             }
           },
           {
             "name": "summary_similarity",
-            "value": 0.47619047619047616,
+            "value": 0.5,
             "passed": null,
             "detail": {}
           },
@@ -200,26 +226,26 @@
             "value": 4.0,
             "passed": null,
             "detail": {
-              "reason": "Main problem is correct, but the request to investigate is missing."
+              "reason": "Main problem is correct and faithful, but the request to investigate/check the API is missing."
             }
           }
         ],
         "passed": true,
-        "latency_ms": 1571.105599985458,
+        "latency_ms": 1907.7473999932408,
         "usage": {
-          "prompt_tokens": 390,
+          "prompt_tokens": 422,
           "completion_tokens": 35
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 4,
-          "reason": "Main problem is correct, but the request to investigate is missing.",
+          "reason": "Main problem is correct and faithful, but the request to investigate/check the API is missing.",
           "model": "nvidia/nemotron-3.5-super-vl:free",
-          "latency_ms": 3634.621700000025,
+          "latency_ms": 4166.2959000095725,
           "usage": {
-            "prompt_tokens": 1181,
-            "completion_tokens": 416
+            "prompt_tokens": 1180,
+            "completion_tokens": 413
           },
           "cached": false,
           "error": null
@@ -274,12 +300,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1619.066199986264,
+        "latency_ms": 729.2120000347495,
         "usage": {
-          "prompt_tokens": 391,
-          "completion_tokens": 26
+          "prompt_tokens": 423,
+          "completion_tokens": 27
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 4,
@@ -290,7 +316,7 @@
             "prompt_tokens": 1171,
             "completion_tokens": 430
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
@@ -343,12 +369,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1413.963800005149,
+        "latency_ms": 774.7564999735914,
         "usage": {
-          "prompt_tokens": 386,
-          "completion_tokens": 27
+          "prompt_tokens": 418,
+          "completion_tokens": 28
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
@@ -359,17 +385,17 @@
             "prompt_tokens": 1171,
             "completion_tokens": 209
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
       {
         "case_id": "email-0011",
         "sample_idx": 0,
-        "raw_output": "{\"category\": \"general\", \"summary\": \"The customer is suggesting the addition of a dark mode feature to improve usability at night.\"}",
+        "raw_output": "{\"category\": \"general\", \"summary\": \"The customer is suggesting the addition of a dark mode feature to improve user experience at night.\"}",
         "parsed_output": {
           "category": "general",
-          "summary": "The customer is suggesting the addition of a dark mode feature to improve usability at night."
+          "summary": "The customer is suggesting the addition of a dark mode feature to improve user experience at night."
         },
         "scores": [
           {
@@ -392,13 +418,13 @@
             "value": 1.0,
             "passed": true,
             "detail": {
-              "words": 16,
+              "words": 17,
               "problems": []
             }
           },
           {
             "name": "summary_similarity",
-            "value": 0.4,
+            "value": 0.375,
             "passed": null,
             "detail": {}
           },
@@ -407,26 +433,26 @@
             "value": 5.0,
             "passed": null,
             "detail": {
-              "reason": "Captures the feature request and its purpose; the compliment is not a required detail."
+              "reason": "The candidate accurately captures the feature request; the compliment is not a required detail."
             }
           }
         ],
         "passed": true,
-        "latency_ms": 1536.9193000369705,
+        "latency_ms": 785.4669000371359,
         "usage": {
-          "prompt_tokens": 385,
-          "completion_tokens": 28
+          "prompt_tokens": 417,
+          "completion_tokens": 30
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
-          "reason": "Captures the feature request and its purpose; the compliment is not a required detail.",
+          "reason": "The candidate accurately captures the feature request; the compliment is not a required detail.",
           "model": "nvidia/nemotron-3.5-super-vl:free",
-          "latency_ms": 3194.7776999995767,
+          "latency_ms": 3148.261900001671,
           "usage": {
-            "prompt_tokens": 1165,
-            "completion_tokens": 230
+            "prompt_tokens": 1166,
+            "completion_tokens": 356
           },
           "cached": false,
           "error": null
@@ -481,12 +507,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1779.2646999587305,
+        "latency_ms": 710.349100001622,
         "usage": {
-          "prompt_tokens": 388,
-          "completion_tokens": 28
+          "prompt_tokens": 420,
+          "completion_tokens": 29
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 3,
@@ -497,7 +523,7 @@
             "prompt_tokens": 1172,
             "completion_tokens": 385
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
@@ -550,12 +576,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1422.2355000092648,
+        "latency_ms": 703.692700015381,
         "usage": {
-          "prompt_tokens": 395,
-          "completion_tokens": 30
+          "prompt_tokens": 427,
+          "completion_tokens": 31
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
@@ -566,17 +592,17 @@
             "prompt_tokens": 1186,
             "completion_tokens": 247
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
       {
         "case_id": "email-0015",
         "sample_idx": 0,
-        "raw_output": "{\"category\": \"billing\", \"summary\": \"The customer needs to know where to update their expired bank card details for upcoming payments.\"}",
+        "raw_output": "{\"category\": \"billing\", \"summary\": \"Customer needs to know where to update their expired bank card details for upcoming payments.\"}",
         "parsed_output": {
           "category": "billing",
-          "summary": "The customer needs to know where to update their expired bank card details for upcoming payments."
+          "summary": "Customer needs to know where to update their expired bank card details for upcoming payments."
         },
         "scores": [
           {
@@ -599,7 +625,7 @@
             "value": 1.0,
             "passed": true,
             "detail": {
-              "words": 16,
+              "words": 15,
               "problems": []
             }
           },
@@ -614,26 +640,26 @@
             "value": 5.0,
             "passed": null,
             "detail": {
-              "reason": "Faithful and complete; the candidate states the expired card and the request to update it without inventing facts or including personal data."
+              "reason": "Captures the expired card problem and the request to update payment details accurately, with no invented facts or personal data."
             }
           }
         ],
         "passed": true,
-        "latency_ms": 1573.9993000170216,
+        "latency_ms": 1390.1441000052728,
         "usage": {
-          "prompt_tokens": 364,
+          "prompt_tokens": 396,
           "completion_tokens": 28
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
-          "reason": "Faithful and complete; the candidate states the expired card and the request to update it without inventing facts or including personal data.",
+          "reason": "Captures the expired card problem and the request to update payment details accurately, with no invented facts or personal data.",
           "model": "nvidia/nemotron-3.5-super-vl:free",
-          "latency_ms": 4016.933699999754,
+          "latency_ms": 2937.206899980083,
           "usage": {
-            "prompt_tokens": 1152,
-            "completion_tokens": 504
+            "prompt_tokens": 1151,
+            "completion_tokens": 361
           },
           "cached": false,
           "error": null
@@ -688,12 +714,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1540.0347000104375,
+        "latency_ms": 896.8696999945678,
         "usage": {
-          "prompt_tokens": 367,
-          "completion_tokens": 30
+          "prompt_tokens": 399,
+          "completion_tokens": 31
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 4,
@@ -704,17 +730,17 @@
             "prompt_tokens": 1163,
             "completion_tokens": 248
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
       {
         "case_id": "email-0019",
         "sample_idx": 0,
-        "raw_output": "{\"category\": \"account\", \"summary\": \"The customer needs a new account verification link because the previous one expired during registration.\"}",
+        "raw_output": "{\"category\": \"account\", \"summary\": \"Customer is unable to complete account registration because the verification link expired and requests a new one.\"}",
         "parsed_output": {
           "category": "account",
-          "summary": "The customer needs a new account verification link because the previous one expired during registration."
+          "summary": "Customer is unable to complete account registration because the verification link expired and requests a new one."
         },
         "scores": [
           {
@@ -737,13 +763,13 @@
             "value": 1.0,
             "passed": true,
             "detail": {
-              "words": 15,
+              "words": 17,
               "problems": []
             }
           },
           {
             "name": "summary_similarity",
-            "value": 0.6666666666666666,
+            "value": 0.8571428571428571,
             "passed": null,
             "detail": {}
           },
@@ -752,26 +778,26 @@
             "value": 5.0,
             "passed": null,
             "detail": {
-              "reason": "Faithful and complete: correct problem and request, no invented facts, no personal data."
+              "reason": "Faithful and complete: captures the expired verification link, blocked registration, and request for a new link, with no personal data."
             }
           }
         ],
         "passed": true,
-        "latency_ms": 1641.1374000017531,
+        "latency_ms": 1538.6591999558732,
         "usage": {
-          "prompt_tokens": 384,
-          "completion_tokens": 27
+          "prompt_tokens": 416,
+          "completion_tokens": 30
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
-          "reason": "Faithful and complete: correct problem and request, no invented facts, no personal data.",
+          "reason": "Faithful and complete: captures the expired verification link, blocked registration, and request for a new link, with no personal data.",
           "model": "nvidia/nemotron-3.5-super-vl:free",
-          "latency_ms": 2169.4470000002184,
+          "latency_ms": 2067.927199997939,
           "usage": {
-            "prompt_tokens": 1167,
-            "completion_tokens": 236
+            "prompt_tokens": 1169,
+            "completion_tokens": 227
           },
           "cached": false,
           "error": null
@@ -826,12 +852,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1439.1273999935947,
+        "latency_ms": 987.2516000177711,
         "usage": {
-          "prompt_tokens": 380,
-          "completion_tokens": 28
+          "prompt_tokens": 412,
+          "completion_tokens": 29
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
@@ -842,7 +868,7 @@
             "prompt_tokens": 1164,
             "completion_tokens": 238
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       },
@@ -895,12 +921,12 @@
           }
         ],
         "passed": true,
-        "latency_ms": 1387.4598999973387,
+        "latency_ms": 887.6623000251129,
         "usage": {
-          "prompt_tokens": 389,
-          "completion_tokens": 26
+          "prompt_tokens": 421,
+          "completion_tokens": 27
         },
-        "cached": true,
+        "cached": false,
         "error": null,
         "judge": {
           "score": 5,
@@ -911,7 +937,7 @@
             "prompt_tokens": 1165,
             "completion_tokens": 179
           },
-          "cached": false,
+          "cached": true,
           "error": null
         }
       }
@@ -948,7 +974,7 @@
         "ci_high": null
       },
       "summary_similarity": {
-        "value": 0.46412211083263716,
+        "value": 0.4798959203564466,
         "n": 12,
         "ci_low": null,
         "ci_high": null
@@ -1056,7 +1082,7 @@
         "ci_high": null
       },
       "summary_similarity/account": {
-        "value": 0.5138888888888888,
+        "value": 0.5773809523809524,
         "n": 3,
         "ci_low": null,
         "ci_high": null
@@ -1068,13 +1094,13 @@
         "ci_high": null
       },
       "summary_similarity/general": {
-        "value": 0.3972222222222222,
+        "value": 0.38888888888888884,
         "n": 3,
         "ci_low": null,
         "ci_high": null
       },
       "summary_similarity/technical": {
-        "value": 0.3531746031746032,
+        "value": 0.3611111111111111,
         "n": 3,
         "ci_low": null,
         "ci_high": null
@@ -1140,25 +1166,37 @@
         "ci_high": null
       },
       "judge_tokens_total": {
-        "value": 17589.0,
+        "value": 17561.0,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "latency_ms_p50": {
+        "value": 887.6623000251129,
+        "n": 12,
+        "ci_low": null,
+        "ci_high": null
+      },
+      "latency_ms_p95": {
+        "value": 1907.7473999932408,
         "n": 12,
         "ci_low": null,
         "ci_high": null
       },
       "tokens_prompt_mean": {
-        "value": 383.25,
+        "value": 415.25,
         "n": 12,
         "ci_low": null,
         "ci_high": null
       },
       "tokens_completion_mean": {
-        "value": 28.25,
+        "value": 29.333333333333332,
         "n": 12,
         "ci_low": null,
         "ci_high": null
       },
       "tokens_total": {
-        "value": 4938.0,
+        "value": 5335.0,
         "n": 12,
         "ci_low": null,
         "ci_high": null
